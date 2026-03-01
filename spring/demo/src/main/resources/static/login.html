@@ -1,305 +1,226 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <!-- Auto-redirect logged-in doctors straight to the dashboard -->
-  <script>
-    (function(){
-      try {
-        var tok = localStorage.getItem("salynt_token");
-        var usr = JSON.parse(localStorage.getItem("salynt_user") || "{}");
-        if (tok && usr.userId) {
-          window.location.replace(usr.caseRoot ? "/doctor.html" : "/doctor.html");
-        }
-      } catch(_) {}
-    })();
-  </script>
-  <title>Salynt · Clinical Login</title>
-  <style>
-    /* ─── Salynt Design System ──────────────────────────────── */
-    :root {
-      --s-purple:  #7c3aed;
-      --s-purple2: #a855f7;
-      --s-cyan:    #06b6d4;
-      --s-cyan2:   #22d3ee;
-      --s-amber:   #f59e0b;
-      --bg-deep:   #020617;
-      --bg-mid:    #0a0520;
-      --bg-card:   rgba(10, 5, 32, 0.80);
-      --card-border: rgba(124, 58, 237, 0.45);
-      --text:      #e2e8f0;
-      --muted:     #94a3b8;
-      --ok:        #34d399;
-      --err:       #f87171;
-    }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script>
+(function(){
+  try{var t=localStorage.getItem("salynt_token"),u=JSON.parse(localStorage.getItem("salynt_user")||"{}");
+  if(t&&u.userId)window.location.replace("/doctor.html");}catch(_){}
+})();
+</script>
+<title>Salynt · Clinical Login</title>
+<style>
+/* ═══ RESET ═══ */
+*{margin:0;padding:0;box-sizing:border-box}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;800&display=swap');
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+:root{
+  --cyan:#06b6d4;--cyan2:#22d3ee;--cyan-dim:rgba(6,182,212,.35);
+  --purple:#7c3aed;--purple2:#a855f7;
+  --green:#34d399;--green-dim:rgba(52,211,153,.25);
+  --amber:#f59e0b;
+  --bg:#020a14;--bg2:#04101e;
+  --text:#c8d6e5;--muted:#4a6178;--bright:#e8f0f8;
+  --err:#f87171;--ok:#34d399;
+  --mono:'JetBrains Mono','SF Mono','Fira Code',monospace;
+  --sans:'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
 
-    body {
-      min-height: 100vh;
-      color: var(--text);
-      font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: linear-gradient(135deg, var(--bg-deep) 0%, var(--bg-mid) 55%, #0d0730 100%);
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-    }
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans)}
 
-    /* ── Full-screen neural network canvas ── */
-    #bgCanvas {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 0;
-    }
+/* ═══ LAYOUT: 70/30 asymmetric ═══ */
+#app{display:flex;height:100vh;width:100vw}
+#scene{flex:1;position:relative;min-width:0}
+#scene canvas{display:block;width:100%;height:100%}
 
-    /* ── Ambient glow spots ── */
-    .glow-spot {
-      position: fixed;
-      pointer-events: none;
-      border-radius: 50%;
-      filter: blur(80px);
-      z-index: 0;
-    }
-    .glow-spot.a { width: 500px; height: 500px; top: -120px; left: -100px;
-      background: radial-gradient(circle, rgba(124,58,237,.30) 0%, transparent 70%); }
-    .glow-spot.b { width: 380px; height: 380px; bottom: -80px; right: -60px;
-      background: radial-gradient(circle, rgba(6,182,212,.22) 0%, transparent 70%); }
-    .glow-spot.c { width: 260px; height: 260px; top: 40%; left: 38%;
-      background: radial-gradient(circle, rgba(168,85,247,.12) 0%, transparent 70%); }
+/* ── Sidebar (right 30%) ── */
+#sidebar{
+  width:clamp(340px,30vw,420px);flex-shrink:0;
+  background:rgba(2,10,20,.92);
+  border-left:1px solid var(--cyan-dim);
+  display:flex;flex-direction:column;
+  padding:0;
+  position:relative;
+  z-index:10;
+}
+#sidebar::before{
+  content:'';position:absolute;top:0;left:0;bottom:0;width:1px;
+  background:linear-gradient(180deg,transparent 0%,var(--cyan) 30%,var(--cyan) 70%,transparent 100%);
+  opacity:.6;
+}
 
-    /* ── Card shell ── */
-    .shell {
-      position: relative;
-      z-index: 1;
-      width: min(1080px, calc(100vw - 24px));
-      min-height: min(680px, calc(100vh - 24px));
-      display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      border-radius: 24px;
-      overflow: hidden;
-      border: 1px solid var(--card-border);
-      background: var(--bg-card);
-      backdrop-filter: blur(22px);
-      box-shadow:
-        0 0 0 1px rgba(168,85,247,.10),
-        0 30px 90px rgba(0,0,0,.65),
-        inset 0 1px 0 rgba(255,255,255,.06);
-    }
+/* ── Sidebar inner ── */
+.sb-inner{
+  flex:1;display:flex;flex-direction:column;justify-content:center;
+  padding:48px 32px 32px;
+  overflow-y:auto;
+}
 
-    /* ── Left panel ── */
-    .left {
-      border-right: 1px solid rgba(124,58,237,.30);
-      padding: 36px 32px;
-      display: flex;
-      flex-direction: column;
-      gap: 22px;
-      background:
-        radial-gradient(70% 50% at 20% 5%, rgba(124,58,237,.18) 0%, transparent 60%),
-        radial-gradient(50% 40% at 80% 90%, rgba(6,182,212,.10) 0%, transparent 60%);
-    }
+/* ── Logo ── */
+.brand{display:flex;align-items:center;gap:14px;margin-bottom:40px}
+.logo-mark{
+  width:44px;height:44px;
+  background:linear-gradient(135deg,var(--purple),var(--cyan));
+  display:flex;align-items:center;justify-content:center;
+  font:900 12px/1 var(--mono);color:#fff;letter-spacing:-.5px;
+  clip-path:polygon(12% 0%,100% 0%,100% 88%,88% 100%,0% 100%,0% 12%);
+  box-shadow:0 0 20px rgba(6,182,212,.4);
+}
+.logo-text{font:800 24px/1 var(--sans);color:var(--bright);letter-spacing:.5px}
+.logo-sub{font:600 10px/1 var(--mono);color:var(--cyan);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px}
 
-    /* Logo */
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .logo-mark {
-      width: 42px; height: 42px; border-radius: 13px;
-      background: linear-gradient(135deg, var(--s-purple), var(--s-cyan));
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 900; font-size: 13px; letter-spacing: -.5px; color: #fff;
-      box-shadow: 0 0 22px rgba(124,58,237,.55), 0 4px 12px rgba(0,0,0,.4);
-      flex-shrink: 0;
-    }
-    .logo-text { font-size: 22px; font-weight: 800; letter-spacing: .3px; }
-    .logo-sub  { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; margin-top: 1px; }
+/* ── Section header ── */
+.form-eyebrow{
+  font:700 10px/1 var(--mono);letter-spacing:2px;text-transform:uppercase;
+  color:var(--cyan);margin-bottom:10px;
+  padding-left:2px;
+}
+.form-title{font:800 22px/1.2 var(--sans);color:var(--bright);margin-bottom:6px}
+.form-desc{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:28px}
 
-    /* Tags */
-    .tag-row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .tag {
-      font-size: 11px; font-weight: 600; letter-spacing: .3px;
-      padding: 4px 10px; border-radius: 999px;
-      border: 1px solid; white-space: nowrap;
-    }
-    .tag.purple { border-color: rgba(124,58,237,.6); background: rgba(124,58,237,.18); color: #c4b5fd; }
-    .tag.cyan   { border-color: rgba(6,182,212,.5);  background: rgba(6,182,212,.14);  color: #67e8f9; }
-    .tag.amber  { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.12); color: #fcd34d; }
+/* ── Inputs ── */
+.field{position:relative;margin-bottom:18px}
+.field input{
+  width:100%;height:48px;padding:18px 14px 4px;
+  background:rgba(6,182,212,.04);
+  border:1px solid rgba(6,182,212,.18);
+  color:var(--bright);font:400 13.5px/1 var(--sans);
+  outline:none;transition:border-color .2s,box-shadow .2s;
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%);
+}
+.field input:focus{
+  border-color:var(--cyan);
+  box-shadow:0 0 0 1px var(--cyan-dim),0 0 20px rgba(6,182,212,.12);
+}
+.field label{
+  position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font:400 13px/1 var(--sans);color:var(--muted);pointer-events:none;
+  transition:all .2s;
+}
+.field input:focus+label,.field input:not(:placeholder-shown)+label{
+  top:10px;font-size:9.5px;color:var(--cyan);letter-spacing:.6px;font-weight:600;
+}
+.field .accent{
+  position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,var(--cyan),var(--purple));
+  transform:scaleX(0);transform-origin:left;transition:transform .3s;
+}
+.field input:focus~.accent{transform:scaleX(1)}
 
-    /* Headline */
-    .headline h1 {
-      font-size: 28px; font-weight: 800; line-height: 1.25;
-      background: linear-gradient(100deg, #e2ccff 0%, #a5f3fc 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 10px;
-    }
-    .headline p { color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+/* ── Status ── */
+#status{min-height:18px;font:600 12px/1 var(--mono);margin-bottom:6px;transition:color .2s}
+#status.ok{color:var(--ok)}#status.err{color:var(--err)}
 
-    /* Stats row */
-    .stats {
-      display: grid; grid-template-columns: repeat(3,1fr);
-      border: 1px solid rgba(124,58,237,.28);
-      border-radius: 14px; overflow: hidden;
-    }
-    .stat {
-      padding: 14px 12px; text-align: center;
-      border-right: 1px solid rgba(124,58,237,.20);
-      background: rgba(124,58,237,.06);
-    }
-    .stat:last-child { border-right: none; }
-    .stat-n  { font-size: 22px; font-weight: 800; color: var(--s-cyan2); display: block; }
-    .stat-lbl{ font-size: 10px; color: var(--muted); letter-spacing: .4px; text-transform: uppercase; margin-top: 2px; }
+/* ── Badge ── */
+#instBadge{
+  display:none;font:600 11px/1.4 var(--mono);padding:8px 12px;margin-bottom:14px;
+  border:1px solid var(--cyan-dim);background:rgba(6,182,212,.06);color:var(--cyan2);
+  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));
+}
+#instBadge.show{display:block}
 
-    /* Segmentation canvas */
-    .seg-wrap {
-      flex: 1; min-height: 200px;
-      border: 1px solid rgba(124,58,237,.30);
-      border-radius: 16px; overflow: hidden;
-      position: relative;
-      background: radial-gradient(circle at 55% 48%, rgba(40,20,80,.35), rgba(2,6,20,.7));
-    }
-    #segCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+/* ── Button ── */
+.btn-submit{
+  width:100%;height:48px;border:none;cursor:pointer;
+  font:700 13px/1 var(--sans);letter-spacing:1px;text-transform:uppercase;color:#fff;
+  background:linear-gradient(100deg,var(--purple) 0%,var(--cyan) 100%);
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));
+  box-shadow:0 0 30px rgba(6,182,212,.3);
+  transition:filter .15s,box-shadow .15s;
+  position:relative;overflow:hidden;
+}
+.btn-submit::after{
+  content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);
+  transition:left .5s;
+}
+.btn-submit:hover::after{left:120%}
+.btn-submit:hover{filter:brightness(1.15);box-shadow:0 0 40px rgba(6,182,212,.5)}
+.btn-submit:active{filter:brightness(.9)}
+.btn-submit:disabled{opacity:.5;cursor:wait}
 
-    .seg-overlay {
-      position: absolute; inset: 0; pointer-events: none;
-      display: flex; flex-direction: column; justify-content: space-between;
-      padding: 12px;
-    }
-    .seg-badge {
-      display: inline-block; font-size: 11px; font-weight: 600;
-      padding: 4px 9px; border-radius: 999px;
-      border: 1px solid rgba(124,58,237,.45); background: rgba(10,5,32,.72);
-      color: #c4b5fd; letter-spacing: .2px;
-    }
-    .seg-legend { display: flex; gap: 8px; }
-    .seg-leg { font-size: 11px; padding: 4px 8px; border-radius: 999px;
-      background: rgba(10,5,32,.72); border: 1px solid rgba(100,100,180,.30);
-      display: flex; align-items: center; gap: 5px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    .dot.wt { background: #52d6ff; } .dot.tc { background: #a78bfa; } .dot.et { background: #34d399; }
+/* ── Creds ── */
+.creds{
+  margin-top:24px;padding:12px 14px;
+  border:1px solid rgba(74,97,120,.25);background:rgba(255,255,255,.02);
+  font:400 11px/2 var(--mono);color:var(--muted);
+}
+.creds kbd{
+  font:600 10.5px/1 var(--mono);
+  background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.25);
+  padding:1px 5px;color:var(--cyan2);
+}
 
-    /* ── Right panel (form) ── */
-    .right {
-      display: flex; flex-direction: column; justify-content: center;
-      padding: 40px 36px;
-      background:
-        radial-gradient(60% 40% at 85% 15%, rgba(6,182,212,.09) 0%, transparent 65%);
-    }
+.footer-note{margin-top:20px;font:400 10px/1 var(--mono);color:rgba(74,97,120,.5);text-align:center;letter-spacing:.5px}
 
-    .form-header { margin-bottom: 28px; }
-    .form-header .eyebrow {
-      font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
-      text-transform: uppercase; color: var(--s-cyan); margin-bottom: 8px;
-    }
-    .form-header h2 { font-size: 26px; font-weight: 800; line-height: 1.2; margin-bottom: 6px; }
-    .form-header p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+/* ═══ HUD overlay (left bottom) ═══ */
+#hud{
+  position:absolute;bottom:0;left:0;
+  width:clamp(320px,40%,520px);
+  padding:20px 24px;
+  pointer-events:none;z-index:5;
+  font:400 11px/1.7 var(--mono);color:var(--cyan);
+  background:linear-gradient(0deg,rgba(2,10,20,.85) 0%,rgba(2,10,20,.4) 70%,transparent 100%);
+}
+#hud .line{opacity:.6;white-space:nowrap;overflow:hidden}
+#hud .line.bright{color:var(--green);opacity:1}
+#hud .line.warn{color:var(--amber);opacity:.9}
+#hud .cursor{display:inline-block;width:7px;height:13px;background:var(--cyan);vertical-align:middle;animation:blink .8s step-end infinite}
+@keyframes blink{50%{opacity:0}}
 
-    /* Floating label inputs */
-    .field {
-      position: relative; margin-bottom: 20px;
-    }
-    .field input {
-      width: 100%; height: 52px; padding: 20px 14px 6px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(124,58,237,.35);
-      border-radius: 12px; color: var(--text); font-size: 14px; outline: none;
-      transition: border-color .2s, box-shadow .2s, background .2s;
-    }
-    .field input:focus {
-      border-color: var(--s-purple2);
-      background: rgba(124,58,237,.08);
-      box-shadow: 0 0 0 3px rgba(124,58,237,.20), 0 0 16px rgba(124,58,237,.15);
-    }
-    .field input:focus + label,
-    .field input:not(:placeholder-shown) + label {
-      top: 8px; font-size: 10.5px; color: var(--s-cyan); letter-spacing: .4px;
-    }
-    .field label {
-      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-      font-size: 14px; color: var(--muted); pointer-events: none;
-      transition: top .2s, font-size .2s, color .2s, letter-spacing .2s;
-    }
-    .field .line {
-      position: absolute; bottom: 0; left: 14px; right: 14px; height: 2px;
-      background: linear-gradient(90deg, var(--s-purple), var(--s-cyan));
-      border-radius: 0 0 2px 2px; transform: scaleX(0); transform-origin: left;
-      transition: transform .25s ease;
-    }
-    .field input:focus ~ .line { transform: scaleX(1); }
+/* ── Top-left HUD tags ── */
+#hud-top{
+  position:absolute;top:20px;left:24px;z-index:5;pointer-events:none;
+  display:flex;gap:10px;
+}
+.htag{
+  font:600 10px/1 var(--mono);letter-spacing:.8px;text-transform:uppercase;
+  padding:5px 10px;
+  border:1px solid;
+  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,5px 100%,0 calc(100% - 5px));
+}
+.htag.c1{border-color:var(--cyan-dim);color:var(--cyan);background:rgba(6,182,212,.08)}
+.htag.c2{border-color:rgba(124,58,237,.4);color:var(--purple2);background:rgba(124,58,237,.08)}
+.htag.c3{border-color:rgba(52,211,153,.3);color:var(--green);background:rgba(52,211,153,.06)}
 
-    /* Status */
-    #status {
-      min-height: 20px; font-size: 13px; margin-bottom: 8px;
-      transition: color .2s;
-    }
-    #status.ok  { color: var(--ok); }
-    #status.err { color: var(--err); }
+/* ── Scan info (top-right of 3D area) ── */
+#scan-info{
+  position:absolute;top:20px;right:24px;z-index:5;pointer-events:none;
+  text-align:right;font:600 11px/1.6 var(--mono);color:var(--muted);
+}
+#scan-info .val{color:var(--cyan2)}
 
-    /* Institution badge (shown after login) */
-    #instBadge {
-      display: none; font-size: 12px; padding: 7px 12px; border-radius: 10px;
-      border: 1px solid rgba(6,182,212,.40); background: rgba(6,182,212,.08);
-      color: var(--s-cyan2); margin-bottom: 12px;
-    }
-    #instBadge.show { display: block; }
-
-    /* Submit button */
-    .btn-submit {
-      width: 100%; height: 50px; border: none; border-radius: 12px;
-      font-size: 15px; font-weight: 700; letter-spacing: .4px; cursor: pointer;
-      background: linear-gradient(100deg, var(--s-purple) 0%, #9333ea 40%, var(--s-cyan) 100%);
-      color: #fff;
-      box-shadow: 0 0 24px rgba(124,58,237,.45), 0 4px 16px rgba(0,0,0,.3);
-      transition: filter .15s, transform .12s, box-shadow .15s;
-      position: relative; overflow: hidden;
-    }
-    .btn-submit::before {
-      content: ""; position: absolute; inset: 0;
-      background: linear-gradient(100deg, rgba(255,255,255,.14) 0%, transparent 60%);
-      pointer-events: none;
-    }
-    .btn-submit:hover  { filter: brightness(1.10); box-shadow: 0 0 36px rgba(124,58,237,.65), 0 6px 20px rgba(0,0,0,.35); }
-    .btn-submit:active { transform: translateY(1px); filter: brightness(.95); }
-    .btn-submit:disabled { opacity: .6; cursor: wait; }
-
-    /* Demo creds hint */
-    .creds {
-      margin-top: 20px; padding: 12px 14px; border-radius: 10px;
-      border: 1px solid rgba(100,100,150,.25); background: rgba(255,255,255,.03);
-      font-size: 11.5px; line-height: 2; color: var(--muted);
-    }
-    .creds kbd {
-      font-family: "SF Mono", "Fira Code", monospace; font-size: 11px;
-      background: rgba(124,58,237,.22); border: 1px solid rgba(124,58,237,.40);
-      border-radius: 5px; padding: 1px 5px; color: #d8b4fe;
-    }
-
-    .footer-note {
-      margin-top: 20px; font-size: 11px; color: rgba(148,163,184,.55);
-      text-align: center;
-    }
-
-    @media (max-width: 860px) {
-      .shell { grid-template-columns: 1fr; }
-      .left  { border-right: none; border-bottom: 1px solid rgba(124,58,237,.25); }
-      .seg-wrap { min-height: 180px; }
-    }
-  </style>
+/* ═══ Responsive ═══ */
+@media(max-width:800px){
+  #app{flex-direction:column-reverse}
+  #sidebar{width:100%;height:auto;max-height:55vh;border-left:none;border-top:1px solid var(--cyan-dim)}
+  #sidebar::before{display:none}
+  #scene{min-height:45vh}
+  #hud{display:none}
+}
+</style>
 </head>
 <body>
-  <!-- Neural-network background canvas -->
-  <canvas id="bgCanvas"></canvas>
+<div id="app">
+  <!-- ═══ 3D Scene (70% left) ═══ -->
+  <div id="scene">
+    <div id="hud-top">
+      <span class="htag c1">BraTS 2021</span>
+      <span class="htag c2">nnU-Net 3D</span>
+      <span class="htag c3">Segmentation Active</span>
+    </div>
+    <div id="scan-info">
+      <div>SLICE <span class="val" id="sliceNum">076</span> / 155</div>
+      <div>DICE <span class="val">0.943</span></div>
+      <div>VOL <span class="val" id="volVal">12.4</span> cm³</div>
+    </div>
+    <div id="hud"></div>
+  </div>
 
-  <!-- Ambient purple/cyan glow spots -->
-  <div class="glow-spot a"></div>
-  <div class="glow-spot b"></div>
-  <div class="glow-spot c"></div>
-
-  <div class="shell">
-    <!-- ── Left: brand + visualization ── -->
-    <section class="left">
+  <!-- ═══ Sidebar (30% right) ═══ -->
+  <aside id="sidebar">
+    <div class="sb-inner">
       <div class="brand">
         <div class="logo-mark">SAL</div>
         <div>
@@ -308,455 +229,547 @@
         </div>
       </div>
 
-      <div class="tag-row">
-        <span class="tag purple">Tumor Segmentation</span>
-        <span class="tag cyan">AI-Assisted Diagnosis</span>
-        <span class="tag amber">BraTS 2021</span>
-      </div>
-
-      <div class="headline">
-        <h1>Your Teammate For AI-Powered Medical Intelligence</h1>
-        <p>Visualize multi-region brain tumor segmentation, compare ground truth with model predictions, and accelerate clinical decisions — built on the Salynt AI platform.</p>
-      </div>
-
-      <div class="stats">
-        <div class="stat">
-          <span class="stat-n" data-target="2847" data-dec="0">0</span>
-          <span class="stat-lbl">Cases Analyzed</span>
-        </div>
-        <div class="stat">
-          <span class="stat-n" data-target="94.3" data-dec="1">0</span>
-          <span class="stat-lbl">Mean Dice %</span>
-        </div>
-        <div class="stat">
-          <span class="stat-n" data-target="3">0</span>
-          <span class="stat-lbl">Tumor Regions</span>
-        </div>
-      </div>
-
-      <div class="seg-wrap" id="vizWrap">
-        <canvas id="segCanvas"></canvas>
-        <div class="seg-overlay">
-          <div style="display:flex;justify-content:space-between">
-            <span class="seg-badge">Live Segmentation &middot; BraTS</span>
-            <span class="seg-badge" id="sliceLabel">Z: 076</span>
-          </div>
-          <div class="seg-legend">
-            <span class="seg-leg"><i class="dot wt"></i>Whole Tumor</span>
-            <span class="seg-leg"><i class="dot tc"></i>Tumor Core</span>
-            <span class="seg-leg"><i class="dot et"></i>Enhancing</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Right: login form ── -->
-    <section class="right">
-      <div class="form-header">
-        <div class="eyebrow">Authorized Physicians Only</div>
-        <h2>Clinical Sign In</h2>
-        <p>Access your assigned case database and AI consult tools.</p>
-      </div>
+      <div class="form-eyebrow">Authorized Access</div>
+      <div class="form-title">Clinical Sign In</div>
+      <div class="form-desc">Authenticate to access case databases, AI segmentation tools, and clinical consult workflows.</div>
 
       <div id="instBadge"></div>
 
       <form id="loginForm" autocomplete="on">
         <div class="field">
-          <input id="username" name="username" type="text" placeholder=" "
-                 autocomplete="username" required />
+          <input id="username" name="username" type="text" placeholder=" " autocomplete="username" required/>
           <label for="username">Username</label>
-          <div class="line"></div>
+          <div class="accent"></div>
         </div>
-
         <div class="field">
-          <input id="password" name="password" type="password" placeholder=" "
-                 autocomplete="current-password" required />
+          <input id="password" name="password" type="password" placeholder=" " autocomplete="current-password" required/>
           <label for="password">Password</label>
-          <div class="line"></div>
+          <div class="accent"></div>
         </div>
-
         <div id="status"></div>
-
-        <button class="btn-submit" id="submitBtn" type="submit">
-          Access Platform &rarr;
-        </button>
+        <button class="btn-submit" id="submitBtn" type="submit">Access Platform →</button>
       </form>
 
       <div class="creds">
-        <div>Demo accounts &mdash; physician credentials:</div>
-        <div><kbd>doctor</kbd> / <kbd>doctor123</kbd> &nbsp;&middot;&nbsp; General Demo</div>
-        <div><kbd>dr.chen</kbd> / <kbd>chen2025</kbd> &nbsp;&middot;&nbsp; Johns Hopkins Neuro-Oncology</div>
-        <div><kbd>dr.smith</kbd> / <kbd>smith2025</kbd> &nbsp;&middot;&nbsp; UCSF Brain Tumor Center</div>
+        <div>Demo physician accounts:</div>
+        <div><kbd>doctor</kbd> / <kbd>doctor123</kbd> · General</div>
+        <div><kbd>dr.chen</kbd> / <kbd>chen2025</kbd> · Johns Hopkins</div>
+        <div><kbd>dr.smith</kbd> / <kbd>smith2025</kbd> · UCSF</div>
       </div>
 
-      <div class="footer-note">&copy; 2026 Salynt Inc. &mdash; Protected Clinical Environment</div>
-    </section>
-  </div>
+      <div class="footer-note">© 2026 Salynt Inc. — Protected Clinical Environment</div>
+    </div>
+  </aside>
+</div>
 
-  <script>
-  /* ═══════════════════════════════════════════
-     1.  Medical MRI Scanning Background
-  ═══════════════════════════════════════════ */
-  (() => {
-    const cv = document.getElementById("bgCanvas");
-    const ctx = cv.getContext("2d");
-    let W, H;
+<!-- Three.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   SCANFIELD — 3D Brain Point-Cloud + Wireframe + Scan Beam
+   ═══════════════════════════════════════════════════════════════ */
+(()=>{
+"use strict";
+const container=document.getElementById("scene");
 
-    function resize() {
-      W = cv.width = window.innerWidth;
-      H = cv.height = window.innerHeight;
+// ── Renderer ──
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x020a14,1);
+container.insertBefore(renderer.domElement,container.firstChild);
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(42,1,.1,500);
+camera.position.set(0,0,5.5);
+
+const clock=new THREE.Clock();
+let W=1,H=1;
+
+function resize(){
+  const r=container.getBoundingClientRect();
+  W=r.width;H=r.height;
+  renderer.setSize(W,H);
+  camera.aspect=W/H;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize",resize);
+resize();
+
+// ── Mouse tracking ──
+const mouse={x:0,y:0};
+container.addEventListener("mousemove",e=>{
+  const r=container.getBoundingClientRect();
+  mouse.x=((e.clientX-r.left)/r.width)*2-1;
+  mouse.y=-((e.clientY-r.top)/r.height)*2+1;
+});
+
+/* ─────────────────────────────────────────
+   Brain geometry generation (procedural)
+   ───────────────────────────────────────── */
+
+// Parametric brain surface: two hemispheres with sulci detail
+function brainSurface(u,v,target){
+  // u,v in [0,1]
+  const theta=u*Math.PI*2;      // around
+  const phi=(v-0.5)*Math.PI;    // top to bottom
+
+  // Base ellipsoid
+  let rx=1.15,ry=1.35,rz=1.05;
+  let x=rx*Math.cos(phi)*Math.cos(theta);
+  let y=ry*Math.sin(phi);
+  let z=rz*Math.cos(phi)*Math.sin(theta);
+
+  // Interhemispheric fissure (pinch along x near z=0)
+  const fissure=Math.exp(-z*z*8)*0.15;
+  x*=(1-fissure);
+
+  // Frontal lobe bulge
+  const frontal=Math.exp(-(theta-Math.PI)*(theta-Math.PI)*2)*Math.cos(phi)*0.12;
+  z+=frontal;
+
+  // Occipital flatten
+  const occ=Math.exp(-(theta)*(theta)*3)*0.08;
+  z-=occ;
+
+  // Sulci (cortical folds) — multiple frequency noise
+  const s1=Math.sin(theta*8+phi*6)*0.025;
+  const s2=Math.sin(theta*14-phi*10)*0.015;
+  const s3=Math.cos(theta*22+phi*18)*0.008;
+  const sulci=(s1+s2+s3);
+  x+=x*sulci;y+=y*sulci;z+=z*sulci;
+
+  target.set(x,y,z);
+}
+
+// Generate brain point cloud
+function createBrainPoints(){
+  const N=28000;
+  const positions=new Float32Array(N*3);
+  const colors=new Float32Array(N*3);
+  const sizes=new Float32Array(N);
+  const v3=new THREE.Vector3();
+
+  for(let i=0;i<N;i++){
+    const u=Math.random();
+    const v=Math.random();
+    brainSurface(u,v,v3);
+
+    // Some points on surface, some scattered inside (tissue)
+    const depth=0.7+Math.random()*0.3;
+    positions[i*3]=v3.x*depth;
+    positions[i*3+1]=v3.y*depth;
+    positions[i*3+2]=v3.z*depth;
+
+    // Color: outer=cyan, inner=purple, deep=dark blue
+    const d=depth;
+    if(d>0.92){
+      colors[i*3]=0.02;colors[i*3+1]=0.55+Math.random()*0.2;colors[i*3+2]=0.7+Math.random()*0.15;
+    }else if(d>0.82){
+      colors[i*3]=0.35+Math.random()*0.15;colors[i*3+1]=0.18;colors[i*3+2]=0.6+Math.random()*0.2;
+    }else{
+      colors[i*3]=0.05;colors[i*3+1]=0.08;colors[i*3+2]=0.2+Math.random()*0.1;
+    }
+    sizes[i]=0.008+Math.random()*0.012*(d>0.9?1.5:0.6);
+  }
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.BufferAttribute(positions,3));
+  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
+  geo.setAttribute("size",new THREE.BufferAttribute(sizes,1));
+
+  const mat=new THREE.PointsMaterial({
+    size:0.018,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,depthWrite:false
+  });
+  return new THREE.Points(geo,mat);
+}
+
+// Brain wireframe (cortex outline)
+function createBrainWireframe(){
+  const uSegs=80,vSegs=50;
+  const geo=new THREE.BufferGeometry();
+  const verts=[];
+  const v3=new THREE.Vector3();
+
+  for(let i=0;i<=uSegs;i++){
+    for(let j=0;j<=vSegs;j++){
+      brainSurface(i/uSegs,j/vSegs,v3);
+      verts.push(v3.x,v3.y,v3.z);
+    }
+  }
+
+  const indices=[];
+  for(let i=0;i<uSegs;i++){
+    for(let j=0;j<vSegs;j++){
+      const a=i*(vSegs+1)+j;
+      const b=a+1;
+      const c=(i+1)*(vSegs+1)+j;
+      const d=c+1;
+      indices.push(a,b,a,c);
+      if(i===uSegs-1)indices.push(c,d);
+      if(j===vSegs-1)indices.push(b,d);
+    }
+  }
+
+  geo.setAttribute("position",new THREE.Float32BufferAttribute(verts,3));
+  geo.setIndex(indices);
+
+  const mat=new THREE.LineBasicMaterial({
+    color:0x1a3a5c,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending
+  });
+  return new THREE.LineSegments(geo,mat);
+}
+
+// Vasculature (blood vessel network)
+function createVasculature(){
+  const group=new THREE.Group();
+  const vesselCount=45;
+
+  for(let v=0;v<vesselCount;v++){
+    const pts=[];
+    const v3=new THREE.Vector3();
+    const startU=Math.random(),startV=Math.random();
+    brainSurface(startU,startV,v3);
+    let cx=v3.x*0.85,cy=v3.y*0.85,cz=v3.z*0.85;
+
+    const segs=15+Math.floor(Math.random()*25);
+    for(let s=0;s<segs;s++){
+      pts.push(new THREE.Vector3(cx,cy,cz));
+      const drift=0.06;
+      cx+=((Math.random()-.5)*drift);
+      cy+=((Math.random()-.5)*drift);
+      cz+=((Math.random()-.5)*drift);
+      // Keep inside brain volume
+      const len=Math.sqrt(cx*cx+cy*cy/(1.35*1.35)+cz*cz/(1.05*1.05));
+      if(len>0.9){cx*=0.9/len;cy*=0.9/len;cz*=0.9/len;}
     }
 
-    let phase = 0;
-    let scanY = 0;
-    let mouse = { x: -1000, y: -1000 };
-
-    // Draw a single scalable brain slice in the grid
-    function drawBrainSlice(cx, cy, scale, zRatio, t, scanL) {
-       // outer shape size based on Z axis position
-       let zScale = 0.4 + 0.6 * Math.sin(zRatio * Math.PI);
-       if (zScale < 0.45) return;
-       let s = scale * zScale;
-       
-       let distToScan = Math.abs(cy - scanL);
-       let scanGlow = Math.max(0, 1 - distToScan / (H * 0.25));
-       let alphaBase = 0.06 + scanGlow * 0.25;
-       let strokeColor = `rgba(124, 58, 237, ${alphaBase})`;
-
-       ctx.lineWidth = 1.2;
-       
-       // Symmetrical hemispheres
-       for (let dir of [-1, 1]) {
-           ctx.beginPath();
-           for(let th= -Math.PI/2; th <= Math.PI/2; th += 0.08) {
-               let frontPinch = Math.exp(-Math.pow(th - Math.PI/2, 2) * 5) * 0.15 * s;
-               let backPinch = Math.exp(-Math.pow(th + Math.PI/2, 2) * 5) * 0.15 * s;
-               let noise = (Math.sin(th * 12 + t * dir) + Math.cos(th * 20 - t)) * 0.03 * s;
-               
-               let x = dir * (Math.cos(th) * s * 0.72 - frontPinch - backPinch + noise);
-               let y = Math.sin(th) * s * 1.05;
-               if (th === -Math.PI/2) ctx.moveTo(cx + x, cy + y);
-               else ctx.lineTo(cx + x, cy + y);
-           }
-           ctx.strokeStyle = strokeColor;
-           ctx.stroke();
-
-           // Inner structural rings (cortex/white matter)
-           for (let ring = 0.75; ring > 0.3; ring -= 0.2) {
-               ctx.beginPath();
-               for(let th= -Math.PI/2; th <= Math.PI/2; th += 0.12) {
-                   let noise = (Math.sin(th * 15 + t * 2) + Math.cos(th * 25)) * 0.02 * s;
-                   let x = dir * (Math.cos(th) * s * 0.7 * ring + noise);
-                   let y = Math.sin(th) * s * 1.05 * ring + noise;
-                   if (th === -Math.PI/2) ctx.moveTo(cx + x, cy + y);
-                   else ctx.lineTo(cx + x, cy + y);
-               }
-               ctx.strokeStyle = `rgba(6, 182, 212, ${alphaBase * ring * 0.6})`;
-               ctx.stroke();
-           }
-       }
-
-       // Tumor rendering in mid-Z slices
-       if (zRatio > 0.25 && zRatio < 0.75) {
-           let tScale = Math.sin((zRatio - 0.25) / 0.5 * Math.PI);
-           const regions = [
-             { s: 0.35, c: "82,214,255" },  // WT (Cyan)
-             { s: 0.18, c: "168,85,247" },  // TC (Purple)
-             { s: 0.09, c: "52,211,153" }   // ET (Green)
-           ];
-           
-           let tx = cx + 0.28 * s;
-           let ty = cy - 0.15 * s;
-           
-           regions.forEach(reg => {
-               ctx.beginPath();
-               let rBase = reg.s * s * tScale;
-               for(let a=0; a<=Math.PI*2; a+=0.15) {
-                   let noise = (Math.sin(a*4 + t*3) + Math.cos(a*7 - t*2)) * rBase * 0.15;
-                   let rx = rBase + noise;
-                   let x = tx + rx * Math.cos(a);
-                   let y = ty + rx * Math.sin(a);
-                   if (a===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-               }
-               let tAlpha = 0.08 + scanGlow * 0.4;
-               let bAlpha = 0.2 + scanGlow * 0.5;
-               ctx.fillStyle = `rgba(${reg.c}, ${tAlpha})`;
-               ctx.fill();
-               ctx.strokeStyle = `rgba(${reg.c}, ${bAlpha})`;
-               ctx.lineWidth = 1;
-               ctx.stroke();
-           });
-       }
-    }
-
-    function frame() {
-      ctx.clearRect(0, 0, W, H);
-      phase += 0.012;
-      
-      // Auto-sweeping scanner
-      scanY = (phase * 120) % (H + 400) - 200;
-      
-      // Mouse interaction (pulls the scanner line if active)
-      let actualScanY = scanY;
-      if (mouse.y > 0) {
-          actualScanY = mouse.y + Math.sin(phase*5) * 10;
-      }
-
-      // Grid sizing setup
-      const Cols = Math.max(2, Math.ceil(W / 240));
-      const Rows = Math.max(2, Math.ceil(H / 240));
-      const cellW = W / Cols;
-      const cellH = H / Rows;
-      const Total = Rows * Cols;
-
-      // Draw faint tech tracking grid
-      ctx.beginPath();
-      for(let x=0; x<=W; x+=cellW) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for(let y=0; y<=H; y+=cellH) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
-      ctx.strokeStyle = "rgba(124, 58, 237, 0.08)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Render MRI grid cells
-      for (let r = 0; r < Rows; r++) {
-        for (let c = 0; c < Cols; c++) {
-          let idx = r * Cols + c;
-          let zRatio = idx / Total;
-          
-          let cx_ = c * cellW + cellW/2;
-          let cy_ = r * cellH + cellH/2;
-          let scale = Math.min(cellW, cellH) * 0.38;
-          
-          // Slice telemetry text
-          ctx.fillStyle = "rgba(103, 232, 249, 0.25)";
-          ctx.font = "10px 'SF Mono', monospace";
-          ctx.fillText(`SEQ:${String(idx+1).padStart(2,'0')} Z:${(zRatio*100).toFixed(1)}`, c * cellW + 10, r * cellH + 20);
-
-          drawBrainSlice(cx_, cy_, scale, zRatio, phase, actualScanY);
-        }
-      }
-
-      // Draw active scanner laser beam
-      ctx.fillStyle = "rgba(6, 182, 212, 0.08)";
-      ctx.fillRect(0, actualScanY - 60, W, 60);
-      ctx.beginPath();
-      ctx.moveTo(0, actualScanY);
-      ctx.lineTo(W, actualScanY);
-      ctx.strokeStyle = "rgba(6, 182, 212, 0.8)";
-      ctx.lineWidth = 2;
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = "#06b6d4";
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      
-      // Global Medical HUD Telemetry
-      ctx.fillStyle = "rgba(103, 232, 249, 0.4)";
-      ctx.font = "12px 'SF Mono', monospace";
-      let dy = 30;
-      ctx.fillText("PATIENT_ID: ANON-8891", 20, dy); dy+=20;
-      ctx.fillText("PROTOCOL: BraTS_SEG_AUTO", 20, dy); dy+=20;
-      ctx.fillText("MODEL: nnU-Net 3D_FULLRES", 20, dy); dy+=20;
-      ctx.fillText(`SCAN_PHASE: ${phase.toFixed(3)}`, 20, dy);
-
-      ctx.fillText("REAL-TIME INFERENCE ACTIVE", W - 220, 30);
-      ctx.fillText("WT / TC / ET VOLUMETRICS", W - 220, 50);
-
-      requestAnimationFrame(frame);
-    }
-
-    window.addEventListener("resize", resize);
-    window.addEventListener("mousemove", e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-    window.addEventListener("mouseleave", () => { mouse.x = -1000; mouse.y = -1000; });
-    resize();
-    frame();
-  })();
-
-  /* ═══════════════════════════════════════════
-     2.  Brain segmentation canvas (left panel)
-  ═══════════════════════════════════════════ */
-  (() => {
-    const wrap  = document.getElementById("vizWrap");
-    const cv    = document.getElementById("segCanvas");
-    const lbl   = document.getElementById("sliceLabel");
-    const ctx   = cv.getContext("2d");
-    const ptr   = { x: .5, y: .5 };
-    let phase   = 0, raf = null;
-    const dpr   = () => Math.min(2, window.devicePixelRatio || 1);
-
-    function resize() {
-      const r = wrap.getBoundingClientRect();
-      const d = dpr();
-      cv.width  = Math.floor(r.width  * d);
-      cv.height = Math.floor(r.height * d);
-      ctx.setTransform(d, 0, 0, d, 0, 0);
-    }
-
-    function noisyEllipse(cx, cy, rx, ry, wobble, pts = 180) {
-      const arr = [];
-      for (let i = 0; i <= pts; i++) {
-        const a = (i / pts) * Math.PI * 2;
-        const n = Math.sin(a * 4 + phase * 1.7) * wobble
-                + Math.cos(a * 7 - phase * 1.3) * wobble * .5;
-        arr.push([cx + (rx + n) * Math.cos(a), cy + (ry + n) * Math.sin(a)]);
-      }
-      return arr;
-    }
-
-    function drawRegion(pts, fill, stroke, blur) {
-      ctx.save();
-      ctx.beginPath();
-      pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
-      ctx.closePath();
-      ctx.shadowBlur = blur; ctx.shadowColor = stroke;
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.shadowBlur = 0; ctx.lineWidth = 1.5; ctx.strokeStyle = stroke; ctx.stroke();
-      ctx.restore();
-    }
-
-    function drawScanGrid(w, h, t) {
-      const step = 20, off = (t * .7) % step;
-      ctx.save(); ctx.globalAlpha = .12; ctx.strokeStyle = "#8b5cf6"; ctx.lineWidth = 1;
-      for (let x = off - step; x < w + step; x += step) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = off - step; y < h + step; y += step) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    function render() {
-      const w = cv.clientWidth, h = cv.clientHeight;
-      phase += .016;
-      const cx = w * (.5 + (ptr.x - .5) * .07);
-      const cy = h * (.52 + (ptr.y - .5) * .07);
-      ctx.clearRect(0, 0, w, h);
-
-      // bg
-      const bg = ctx.createRadialGradient(cx, cy, 20, cx, cy, Math.max(w, h) * .75);
-      bg.addColorStop(0, "rgba(60,20,120,.35)");
-      bg.addColorStop(1, "rgba(2,6,20,.90)");
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
-
-      drawScanGrid(w, h, phase * 8);
-
-      const pulse = 1 + Math.sin(phase * 2.2) * .03;
-      const outer = noisyEllipse(cx, cy, w * .22 * pulse, h * .28 * pulse, 2.5);
-      const core  = noisyEllipse(cx + 5 * Math.sin(phase * 1.3), cy - 4 * Math.cos(phase),
-                                 w * .13 * pulse, h * .18 * pulse, 2.1);
-      const enh   = noisyEllipse(cx - 8 * Math.cos(phase * 1.1), cy + 3 * Math.sin(phase * 1.5),
-                                 w * .07 * pulse, h * .10 * pulse, 1.7);
-
-      drawRegion(outer, "rgba(82,214,255,.16)",  "rgba(82,214,255,.90)",  18);
-      drawRegion(core,  "rgba(168,85,247,.16)",  "rgba(168,85,247,.90)",  15);
-      drawRegion(enh,   "rgba(52,211,153,.18)",  "rgba(52,211,153,.90)",  14);
-
-      // scan rings
-      ctx.save(); ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = "rgba(168,85,247,.30)"; ctx.lineWidth = 1;
-      for (let i = 0; i < 5; i++) {
-        const r = (i + 1) * 22 + Math.sin(phase * 2.8 + i) * 4;
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.restore();
-
-      const z = 55 + Math.floor((Math.sin(phase * 1.3) + 1) * 22);
-      lbl.textContent = `Z: ${String(z).padStart(3, "0")}`;
-
-      raf = requestAnimationFrame(render);
-    }
-
-    wrap.addEventListener("mousemove", e => {
-      const r = wrap.getBoundingClientRect();
-      ptr.x = (e.clientX - r.left) / r.width;
-      ptr.y = (e.clientY - r.top)  / r.height;
+    if(pts.length<2)continue;
+    const curve=new THREE.CatmullRomCurve3(pts);
+    const geo=new THREE.BufferGeometry().setFromPoints(curve.getPoints(segs*3));
+    const isMajor=v<8;
+    const mat=new THREE.LineBasicMaterial({
+      color:isMajor?0x8b2040:0x4a1828,
+      transparent:true,opacity:isMajor?0.35:0.15,
+      blending:THREE.AdditiveBlending
     });
-    wrap.addEventListener("mouseleave", () => { ptr.x = .5; ptr.y = .5; });
-    window.addEventListener("resize", resize);
-    resize(); render();
-    window.addEventListener("beforeunload", () => raf && cancelAnimationFrame(raf));
-  })();
+    group.add(new THREE.Line(geo,mat));
 
-  /* ═══════════════════════════════════════════
-     3.  Stat counter animation
-  ═══════════════════════════════════════════ */
-  (() => {
-    document.querySelectorAll(".stat-n[data-target]").forEach(el => {
-      const target = parseFloat(el.dataset.target);
-      const dec    = parseInt(el.dataset.dec || "0");
-      const dur    = 1800, step = 16;
-      let current  = 0, elapsed = 0;
-      const timer  = setInterval(() => {
-        elapsed += step;
-        current  = target * Math.min(1, elapsed / dur);
-        el.textContent = current.toFixed(dec);
-        if (elapsed >= dur) { el.textContent = target.toFixed(dec); clearInterval(timer); }
-      }, step);
-    });
-  })();
-
-  /* ═══════════════════════════════════════════
-     4.  Login form
-  ═══════════════════════════════════════════ */
-  (() => {
-    const form      = document.getElementById("loginForm");
-    const uInput    = document.getElementById("username");
-    const pInput    = document.getElementById("password");
-    const statusEl  = document.getElementById("status");
-    const instBadge = document.getElementById("instBadge");
-    const submitBtn = document.getElementById("submitBtn");
-
-    function setStatus(text, type = "") {
-      statusEl.textContent = text;
-      statusEl.className   = type;
-    }
-
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const u = uInput.value.trim();
-      const p = pInput.value;
-      if (!u || !p) { setStatus("Please enter username and password.", "err"); return; }
-
-      submitBtn.disabled = true;
-      setStatus("Authenticating…");
-
-      try {
-        const resp = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: u, password: p })
-        });
-        const data = await resp.json().catch(() => ({}));
-
-        if (!resp.ok || !data.ok) {
-          setStatus("Invalid credentials — access denied.", "err");
-          submitBtn.disabled = false;
-          return;
-        }
-
-        // Store everything including caseRoot for doctor.html
-        localStorage.setItem("salynt_token", data.token || "");
-        localStorage.setItem("salynt_user", JSON.stringify({
-          userId:      data.userId,
-          displayName: data.displayName,
-          institution: data.institution || "",
-          caseRoot:    data.caseRoot    || "/viewer/cases"
-        }));
-
-        // Show welcome badge
-        instBadge.textContent = `✓ Welcome, ${data.displayName}  ·  ${data.institution || ""}`;
-        instBadge.classList.add("show");
-        setStatus("", "ok");
-
-        // Short delay so user sees the welcome, then navigate
-        setTimeout(() => { window.location.href = "/doctor.html"; }, 700);
-
-      } catch (err) {
-        setStatus("Network error — please try again.", "err");
-        submitBtn.disabled = false;
+    // Branch
+    if(Math.random()>0.5){
+      const brPts=[];
+      const bi=Math.floor(pts.length*0.4+Math.random()*pts.length*0.4);
+      let bx=pts[bi].x,by=pts[bi].y,bz=pts[bi].z;
+      const bSegs=6+Math.floor(Math.random()*10);
+      for(let s=0;s<bSegs;s++){
+        brPts.push(new THREE.Vector3(bx,by,bz));
+        bx+=(Math.random()-.5)*0.04;
+        by+=(Math.random()-.5)*0.04;
+        bz+=(Math.random()-.5)*0.04;
       }
-    });
-  })();
-  </script>
+      if(brPts.length>=2){
+        const bc=new THREE.CatmullRomCurve3(brPts);
+        const bg=new THREE.BufferGeometry().setFromPoints(bc.getPoints(bSegs*2));
+        const bm=new THREE.LineBasicMaterial({color:0x5a1530,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending});
+        group.add(new THREE.Line(bg,bm));
+      }
+    }
+  }
+  return group;
+}
+
+// Tumor mass (point cloud, right hemisphere)
+function createTumor(){
+  const N=4000;
+  const positions=new Float32Array(N*3);
+  const colors=new Float32Array(N*3);
+  // Tumor center in right hemisphere
+  const tcx=0.45,tcy=0.15,tcz=0.1;
+  const regions=[
+    {r:0.32,cr:0.32,cg:0.84,cb:1.0,n:1800},   // WT - cyan
+    {r:0.18,cr:0.66,cg:0.33,cb:0.92,n:1200},   // TC - purple
+    {r:0.10,cr:0.20,cg:0.83,cb:0.60,n:1000}    // ET - green
+  ];
+  let idx=0;
+  regions.forEach(reg=>{
+    for(let i=0;i<reg.n&&idx<N;i++,idx++){
+      const theta=Math.random()*Math.PI*2;
+      const phi=Math.acos(2*Math.random()-1);
+      const r=reg.r*Math.pow(Math.random(),0.33);
+      // Irregular shape
+      const noise=1+Math.sin(theta*5)*0.15+Math.cos(phi*7)*0.1;
+      positions[idx*3]=tcx+r*noise*Math.sin(phi)*Math.cos(theta);
+      positions[idx*3+1]=tcy+r*noise*Math.sin(phi)*Math.sin(theta);
+      positions[idx*3+2]=tcz+r*noise*Math.cos(phi);
+      const jitter=0.15;
+      colors[idx*3]=reg.cr+Math.random()*jitter;
+      colors[idx*3+1]=reg.cg+Math.random()*jitter;
+      colors[idx*3+2]=reg.cb+Math.random()*jitter;
+    }
+  });
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.BufferAttribute(positions,3));
+  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
+
+  const mat=new THREE.PointsMaterial({
+    size:0.022,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.0,blending:THREE.AdditiveBlending,depthWrite:false
+  });
+  return new THREE.Points(geo,mat);
+}
+
+// Tumor bounding wireframe box
+function createTumorBounds(){
+  const geo=new THREE.BoxGeometry(0.7,0.55,0.5);
+  const edges=new THREE.EdgesGeometry(geo);
+  const mat=new THREE.LineBasicMaterial({color:0x06b6d4,transparent:true,opacity:0.0});
+  const box=new THREE.LineSegments(edges,mat);
+  box.position.set(0.45,0.15,0.1);
+  return box;
+}
+
+// Scan beam (horizontal plane)
+function createScanBeam(){
+  const geo=new THREE.PlaneGeometry(6,0.015);
+  const mat=new THREE.MeshBasicMaterial({
+    color:0x06b6d4,transparent:true,opacity:0.6,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  });
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.rotation.x=0;
+  // Glow plane behind
+  const glowGeo=new THREE.PlaneGeometry(6,0.3);
+  const glowMat=new THREE.MeshBasicMaterial({
+    color:0x06b6d4,transparent:true,opacity:0.08,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  });
+  const glow=new THREE.Mesh(glowGeo,glowMat);
+  const group=new THREE.Group();
+  group.add(mesh);group.add(glow);
+  return group;
+}
+
+/* ── Assemble scene ── */
+const brainGroup=new THREE.Group();
+
+const pointCloud=createBrainPoints();
+const wireframe=createBrainWireframe();
+const vasculature=createVasculature();
+const tumor=createTumor();
+const tumorBounds=createTumorBounds();
+const scanBeam=createScanBeam();
+
+brainGroup.add(wireframe);
+brainGroup.add(pointCloud);
+brainGroup.add(vasculature);
+brainGroup.add(tumor);
+brainGroup.add(tumorBounds);
+
+scene.add(brainGroup);
+scene.add(scanBeam);
+
+// Subtle ambient + directional
+scene.add(new THREE.AmbientLight(0x0a1628,1));
+const dLight=new THREE.DirectionalLight(0x06b6d4,0.3);
+dLight.position.set(2,3,4);scene.add(dLight);
+
+/* ── Animation state ── */
+let scanPhase=0;
+let tumorRevealed=false;
+let tumorOpacity=0;
+let cameraAngle=0;
+
+const sliceEl=document.getElementById("sliceNum");
+const volEl=document.getElementById("volVal");
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=clock.getDelta();
+  const t=clock.getElapsedTime();
+
+  // Slow camera orbit with mouse influence
+  cameraAngle+=dt*0.12;
+  const camDist=5.2+Math.sin(t*0.3)*0.3;
+  const mx=mouse.x*0.4;
+  const my=mouse.y*0.25;
+  camera.position.x=Math.sin(cameraAngle+mx)*camDist;
+  camera.position.z=Math.cos(cameraAngle+mx)*camDist*0.8;
+  camera.position.y=1.0+my*1.5+Math.sin(t*0.2)*0.3;
+  camera.lookAt(0,0.1,0);
+
+  // Brain slow rotation
+  brainGroup.rotation.y=Math.sin(t*0.08)*0.15;
+
+  // Scan beam sweeps vertically
+  scanPhase+=dt*0.35;
+  const scanY=Math.sin(scanPhase)*1.6;
+  scanBeam.position.y=scanY;
+
+  // Update slice readout
+  const sliceIdx=Math.floor((scanY+1.6)/3.2*155);
+  if(sliceEl)sliceEl.textContent=String(Math.max(1,Math.min(155,sliceIdx))).padStart(3,"0");
+
+  // Point cloud: highlight points near scan beam
+  const posArr=pointCloud.geometry.attributes.position.array;
+  const colArr=pointCloud.geometry.attributes.color.array;
+  const N=posArr.length/3;
+  for(let i=0;i<N;i++){
+    const py=posArr[i*3+1];
+    const dist=Math.abs(py-scanY);
+    if(dist<0.12){
+      // Bright cyan flash
+      const flash=1-dist/0.12;
+      colArr[i*3]=0.02+flash*0.2;
+      colArr[i*3+1]=0.55+flash*0.45;
+      colArr[i*3+2]=0.7+flash*0.3;
+      // Pixel displacement
+      posArr[i*3]+=(Math.random()-0.5)*0.002*flash;
+    }else{
+      // Restore base color gradually
+      const depth=Math.sqrt(posArr[i*3]**2+(posArr[i*3+1]/1.35)**2+(posArr[i*3+2]/1.05)**2);
+      if(depth>0.82){
+        colArr[i*3]+=(0.02-colArr[i*3])*0.02;
+        colArr[i*3+1]+=(0.6-colArr[i*3+1])*0.02;
+        colArr[i*3+2]+=(0.75-colArr[i*3+2])*0.02;
+      }else{
+        colArr[i*3]+=(0.25-colArr[i*3])*0.02;
+        colArr[i*3+1]+=(0.12-colArr[i*3+1])*0.02;
+        colArr[i*3+2]+=(0.5-colArr[i*3+2])*0.02;
+      }
+    }
+  }
+  pointCloud.geometry.attributes.position.needsUpdate=true;
+  pointCloud.geometry.attributes.color.needsUpdate=true;
+
+  // Reveal tumor when scan beam passes through tumor region
+  const tumorY=0.15;
+  if(Math.abs(scanY-tumorY)<0.4&&!tumorRevealed){
+    tumorRevealed=true;
+  }
+  if(tumorRevealed&&tumorOpacity<0.85){
+    tumorOpacity+=dt*0.4;
+    tumor.material.opacity=Math.min(0.85,tumorOpacity);
+    tumorBounds.material.opacity=Math.min(0.5,tumorOpacity*0.6);
+  }
+
+  // Tumor pulsing
+  if(tumorRevealed){
+    const pulse=1+Math.sin(t*2.5)*0.03;
+    tumor.scale.set(pulse,pulse,pulse);
+    // Volume readout
+    const vol=(12.4+Math.sin(t*1.5)*0.3).toFixed(1);
+    if(volEl)volEl.textContent=vol;
+  }
+
+  // Vasculature subtle pulse
+  vasculature.children.forEach((line,i)=>{
+    line.material.opacity=line.material.opacity*0.98+(i<8?0.35:0.15)*0.02+Math.sin(t*3+i)*0.02;
+  });
+
+  renderer.render(scene,camera);
+}
+animate();
+
+/* ═══════════════════════════════════════════
+   HUD Data Stream (left bottom)
+   ═══════════════════════════════════════════ */
+const hudEl=document.getElementById("hud");
+const hudLines=[
+  {text:"[SYS] Initializing Salynt Clinical Engine v4.2.1",delay:0,cls:""},
+  {text:"[GPU] CUDA 12.4 — NVIDIA A100 80GB detected",delay:400,cls:""},
+  {text:"[MDL] Loading checkpoint: BraTS_v4_Final.pth",delay:900,cls:""},
+  {text:"[MDL] Architecture: nnU-Net 3D_fullres (encoder depth=6)",delay:1500,cls:""},
+  {text:"[MDL] Parameters: 31.2M — FP16 inference enabled",delay:2100,cls:""},
+  {text:"[PRE] NIfTI loader ready — T1, T1ce, T2, FLAIR channels",delay:2800,cls:""},
+  {text:"[PRE] Z-score normalization per-channel active",delay:3300,cls:""},
+  {text:"[PRE] Resampling to 1mm³ isotropic",delay:3700,cls:""},
+  {text:"[SEG] Patch size: 128×128×128 — sliding window σ=0.5",delay:4200,cls:""},
+  {text:"[SEG] Regions: WT (label 2) | TC (labels 1,4) | ET (label 4)",delay:4800,cls:""},
+  {text:"[NET] Secure WebSocket tunnel established",delay:5400,cls:""},
+  {text:"[SYS] Status: READY — Awaiting physician authentication",delay:6000,cls:"bright"},
+  {text:"[MON] Real-time inference pipeline: STANDBY",delay:6600,cls:"warn"},
+];
+
+let hudIndex=0;
+function appendHudLine(){
+  if(hudIndex>=hudLines.length){
+    // Loop with new timestamps
+    setTimeout(()=>{
+      hudEl.innerHTML="";hudIndex=0;appendHudLine();
+    },3000);
+    return;
+  }
+  const item=hudLines[hudIndex];
+  setTimeout(()=>{
+    const div=document.createElement("div");
+    div.className="line"+(item.cls?" "+item.cls:"");
+    const ts=new Date().toISOString().substr(11,12);
+    div.innerHTML=`<span style="color:var(--muted)">${ts}</span> ${item.text}`;
+    // Keep max lines
+    if(hudEl.children.length>10)hudEl.removeChild(hudEl.firstChild);
+    hudEl.appendChild(div);
+    // Scroll
+    hudEl.scrollTop=hudEl.scrollHeight;
+    hudIndex++;
+    appendHudLine();
+  },item.delay-(hudIndex>0?hudLines[hudIndex-1].delay:0));
+}
+appendHudLine();
+
+})();
+
+/* ═══════════════════════════════════════════
+   LOGIN FORM
+   ═══════════════════════════════════════════ */
+(()=>{
+  const form=document.getElementById("loginForm");
+  const uInput=document.getElementById("username");
+  const pInput=document.getElementById("password");
+  const statusEl=document.getElementById("status");
+  const instBadge=document.getElementById("instBadge");
+  const submitBtn=document.getElementById("submitBtn");
+
+  function setStatus(text,type=""){statusEl.textContent=text;statusEl.className=type}
+
+  form.addEventListener("submit",async e=>{
+    e.preventDefault();
+    const u=uInput.value.trim(),p=pInput.value;
+    if(!u||!p){setStatus("Enter credentials to proceed.","err");return}
+
+    submitBtn.disabled=true;
+    setStatus("Authenticating…");
+
+    try{
+      const resp=await fetch("/api/auth/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username:u,password:p})
+      });
+      const data=await resp.json().catch(()=>({}));
+
+      if(!resp.ok||!data.ok){
+        setStatus("Access denied — invalid credentials.","err");
+        submitBtn.disabled=false;return;
+      }
+
+      localStorage.setItem("salynt_token",data.token||"");
+      localStorage.setItem("salynt_user",JSON.stringify({
+        userId:data.userId,displayName:data.displayName,
+        institution:data.institution||"",caseRoot:data.caseRoot||"/viewer/cases"
+      }));
+
+      instBadge.textContent=`✓ ${data.displayName} · ${data.institution||""}`;
+      instBadge.classList.add("show");
+      setStatus("","ok");
+
+      setTimeout(()=>{window.location.href="/doctor.html"},700);
+    }catch(err){
+      setStatus("Network error — retry.","err");
+      submitBtn.disabled=false;
+    }
+  });
+})();
+</script>
 </body>
 </html>

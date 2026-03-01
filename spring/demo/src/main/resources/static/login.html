@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- Auto-redirect logged-in doctors straight to the dashboard -->
+  <script>
+    (function(){
+      try {
+        var tok = localStorage.getItem("salynt_token");
+        var usr = JSON.parse(localStorage.getItem("salynt_user") || "{}");
+        if (tok && usr.userId) {
+          window.location.replace(usr.caseRoot ? "/doctor.html" : "/doctor.html");
+        }
+      } catch(_) {}
+    })();
+  </script>
+  <title>Salynt · Clinical Login</title>
+  <style>
+    /* ─── Salynt Design System ──────────────────────────────── */
+    :root {
+      --s-purple:  #7c3aed;
+      --s-purple2: #a855f7;
+      --s-cyan:    #06b6d4;
+      --s-cyan2:   #22d3ee;
+      --s-amber:   #f59e0b;
+      --bg-deep:   #020617;
+      --bg-mid:    #0a0520;
+      --bg-card:   rgba(10, 5, 32, 0.80);
+      --card-border: rgba(124, 58, 237, 0.45);
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --ok:        #34d399;
+      --err:       #f87171;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(135deg, var(--bg-deep) 0%, var(--bg-mid) 55%, #0d0730 100%);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    /* ── Full-screen neural network canvas ── */
+    #bgCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Ambient glow spots ── */
+    .glow-spot {
+      position: fixed;
+      pointer-events: none;
+      border-radius: 50%;
+      filter: blur(80px);
+      z-index: 0;
+    }
+    .glow-spot.a { width: 500px; height: 500px; top: -120px; left: -100px;
+      background: radial-gradient(circle, rgba(124,58,237,.30) 0%, transparent 70%); }
+    .glow-spot.b { width: 380px; height: 380px; bottom: -80px; right: -60px;
+      background: radial-gradient(circle, rgba(6,182,212,.22) 0%, transparent 70%); }
+    .glow-spot.c { width: 260px; height: 260px; top: 40%; left: 38%;
+      background: radial-gradient(circle, rgba(168,85,247,.12) 0%, transparent 70%); }
+
+    /* ── Card shell ── */
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(1080px, calc(100vw - 24px));
+      min-height: min(680px, calc(100vh - 24px));
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      background: var(--bg-card);
+      backdrop-filter: blur(22px);
+      box-shadow:
+        0 0 0 1px rgba(168,85,247,.10),
+        0 30px 90px rgba(0,0,0,.65),
+        inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    /* ── Left panel ── */
+    .left {
+      border-right: 1px solid rgba(124,58,237,.30);
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      background:
+        radial-gradient(70% 50% at 20% 5%, rgba(124,58,237,.18) 0%, transparent 60%),
+        radial-gradient(50% 40% at 80% 90%, rgba(6,182,212,.10) 0%, transparent 60%);
+    }
+
+    /* Logo */
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo-mark {
+      width: 42px; height: 42px; border-radius: 13px;
+      background: linear-gradient(135deg, var(--s-purple), var(--s-cyan));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 13px; letter-spacing: -.5px; color: #fff;
+      box-shadow: 0 0 22px rgba(124,58,237,.55), 0 4px 12px rgba(0,0,0,.4);
+      flex-shrink: 0;
+    }
+    .logo-text { font-size: 22px; font-weight: 800; letter-spacing: .3px; }
+    .logo-sub  { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; margin-top: 1px; }
+
+    /* Tags */
+    .tag-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag {
+      font-size: 11px; font-weight: 600; letter-spacing: .3px;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid; white-space: nowrap;
+    }
+    .tag.purple { border-color: rgba(124,58,237,.6); background: rgba(124,58,237,.18); color: #c4b5fd; }
+    .tag.cyan   { border-color: rgba(6,182,212,.5);  background: rgba(6,182,212,.14);  color: #67e8f9; }
+    .tag.amber  { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.12); color: #fcd34d; }
+
+    /* Headline */
+    .headline h1 {
+      font-size: 28px; font-weight: 800; line-height: 1.25;
+      background: linear-gradient(100deg, #e2ccff 0%, #a5f3fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+    }
+    .headline p { color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+
+    /* Stats row */
+    .stats {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      border: 1px solid rgba(124,58,237,.28);
+      border-radius: 14px; overflow: hidden;
+    }
+    .stat {
+      padding: 14px 12px; text-align: center;
+      border-right: 1px solid rgba(124,58,237,.20);
+      background: rgba(124,58,237,.06);
+    }
+    .stat:last-child { border-right: none; }
+    .stat-n  { font-size: 22px; font-weight: 800; color: var(--s-cyan2); display: block; }
+    .stat-lbl{ font-size: 10px; color: var(--muted); letter-spacing: .4px; text-transform: uppercase; margin-top: 2px; }
+
+    /* Segmentation canvas */
+    .seg-wrap {
+      flex: 1; min-height: 200px;
+      border: 1px solid rgba(124,58,237,.30);
+      border-radius: 16px; overflow: hidden;
+      position: relative;
+      background: radial-gradient(circle at 55% 48%, rgba(40,20,80,.35), rgba(2,6,20,.7));
+    }
+    #segCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+    .seg-overlay {
+      position: absolute; inset: 0; pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 12px;
+    }
+    .seg-badge {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 4px 9px; border-radius: 999px;
+      border: 1px solid rgba(124,58,237,.45); background: rgba(10,5,32,.72);
+      color: #c4b5fd; letter-spacing: .2px;
+    }
+    .seg-legend { display: flex; gap: 8px; }
+    .seg-leg { font-size: 11px; padding: 4px 8px; border-radius: 999px;
+      background: rgba(10,5,32,.72); border: 1px solid rgba(100,100,180,.30);
+      display: flex; align-items: center; gap: 5px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .dot.wt { background: #52d6ff; } .dot.tc { background: #a78bfa; } .dot.et { background: #34d399; }
+
+    /* ── Right panel (form) ── */
+    .right {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 40px 36px;
+      background:
+        radial-gradient(60% 40% at 85% 15%, rgba(6,182,212,.09) 0%, transparent 65%);
+    }
+
+    .form-header { margin-bottom: 28px; }
+    .form-header .eyebrow {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--s-cyan); margin-bottom: 8px;
+    }
+    .form-header h2 { font-size: 26px; font-weight: 800; line-height: 1.2; margin-bottom: 6px; }
+    .form-header p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* Floating label inputs */
+    .field {
+      position: relative; margin-bottom: 20px;
+    }
+    .field input {
+      width: 100%; height: 52px; padding: 20px 14px 6px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(124,58,237,.35);
+      border-radius: 12px; color: var(--text); font-size: 14px; outline: none;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    .field input:focus {
+      border-color: var(--s-purple2);
+      background: rgba(124,58,237,.08);
+      box-shadow: 0 0 0 3px rgba(124,58,237,.20), 0 0 16px rgba(124,58,237,.15);
+    }
+    .field input:focus + label,
+    .field input:not(:placeholder-shown) + label {
+      top: 8px; font-size: 10.5px; color: var(--s-cyan); letter-spacing: .4px;
+    }
+    .field label {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      font-size: 14px; color: var(--muted); pointer-events: none;
+      transition: top .2s, font-size .2s, color .2s, letter-spacing .2s;
+    }
+    .field .line {
+      position: absolute; bottom: 0; left: 14px; right: 14px; height: 2px;
+      background: linear-gradient(90deg, var(--s-purple), var(--s-cyan));
+      border-radius: 0 0 2px 2px; transform: scaleX(0); transform-origin: left;
+      transition: transform .25s ease;
+    }
+    .field input:focus ~ .line { transform: scaleX(1); }
+
+    /* Status */
+    #status {
+      min-height: 20px; font-size: 13px; margin-bottom: 8px;
+      transition: color .2s;
+    }
+    #status.ok  { color: var(--ok); }
+    #status.err { color: var(--err); }
+
+    /* Institution badge (shown after login) */
+    #instBadge {
+      display: none; font-size: 12px; padding: 7px 12px; border-radius: 10px;
+      border: 1px solid rgba(6,182,212,.40); background: rgba(6,182,212,.08);
+      color: var(--s-cyan2); margin-bottom: 12px;
+    }
+    #instBadge.show { display: block; }
+
+    /* Submit button */
+    .btn-submit {
+      width: 100%; height: 50px; border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 700; letter-spacing: .4px; cursor: pointer;
+      background: linear-gradient(100deg, var(--s-purple) 0%, #9333ea 40%, var(--s-cyan) 100%);
+      color: #fff;
+      box-shadow: 0 0 24px rgba(124,58,237,.45), 0 4px 16px rgba(0,0,0,.3);
+      transition: filter .15s, transform .12s, box-shadow .15s;
+      position: relative; overflow: hidden;
+    }
+    .btn-submit::before {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(100deg, rgba(255,255,255,.14) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .btn-submit:hover  { filter: brightness(1.10); box-shadow: 0 0 36px rgba(124,58,237,.65), 0 6px 20px rgba(0,0,0,.35); }
+    .btn-submit:active { transform: translateY(1px); filter: brightness(.95); }
+    .btn-submit:disabled { opacity: .6; cursor: wait; }
+
+    /* Demo creds hint */
+    .creds {
+      margin-top: 20px; padding: 12px 14px; border-radius: 10px;
+      border: 1px solid rgba(100,100,150,.25); background: rgba(255,255,255,.03);
+      font-size: 11.5px; line-height: 2; color: var(--muted);
+    }
+    .creds kbd {
+      font-family: "SF Mono", "Fira Code", monospace; font-size: 11px;
+      background: rgba(124,58,237,.22); border: 1px solid rgba(124,58,237,.40);
+      border-radius: 5px; padding: 1px 5px; color: #d8b4fe;
+    }
+
+    .footer-note {
+      margin-top: 20px; font-size: 11px; color: rgba(148,163,184,.55);
+      text-align: center;
+    }
+
+    @media (max-width: 860px) {
+      .shell { grid-template-columns: 1fr; }
+      .left  { border-right: none; border-bottom: 1px solid rgba(124,58,237,.25); }
+      .seg-wrap { min-height: 180px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Neural-network background canvas -->
+  <canvas id="bgCanvas"></canvas>
+
+  <!-- Ambient purple/cyan glow spots -->
+  <div class="glow-spot a"></div>
+  <div class="glow-spot b"></div>
+  <div class="glow-spot c"></div>
+
+  <div class="shell">
+    <!-- ── Left: brand + visualization ── -->
+    <section class="left">
+      <div class="brand">
+        <div class="logo-mark">SAL</div>
+        <div>
+          <div class="logo-text">Salynt</div>
+          <div class="logo-sub">Clinical AI Platform</div>
+        </div>
+      </div>
+
+      <div class="tag-row">
+        <span class="tag purple">Tumor Segmentation</span>
+        <span class="tag cyan">AI-Assisted Diagnosis</span>
+        <span class="tag amber">BraTS 2021</span>
+      </div>
+
+      <div class="headline">
+        <h1>Your Teammate For AI-Powered Medical Intelligence</h1>
+        <p>Visualize multi-region brain tumor segmentation, compare ground truth with model predictions, and accelerate clinical decisions — built on the Salynt AI platform.</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-n" data-target="2847" data-dec="0">0</span>
+          <span class="stat-lbl">Cases Analyzed</span>
+        </div>
+        <div class="stat">
+          <span class="stat-n" data-target="94.3" data-dec="1">0</span>
+          <span class="stat-lbl">Mean Dice %</span>
+        </div>
+        <div class="stat">
+          <span class="stat-n" data-target="3">0</span>
+          <span class="stat-lbl">Tumor Regions</span>
+        </div>
+      </div>
+
+      <div class="seg-wrap" id="vizWrap">
+        <canvas id="segCanvas"></canvas>
+        <div class="seg-overlay">
+          <div style="display:flex;justify-content:space-between">
+            <span class="seg-badge">Live Segmentation &middot; BraTS</span>
+            <span class="seg-badge" id="sliceLabel">Z: 076</span>
+          </div>
+          <div class="seg-legend">
+            <span class="seg-leg"><i class="dot wt"></i>Whole Tumor</span>
+            <span class="seg-leg"><i class="dot tc"></i>Tumor Core</span>
+            <span class="seg-leg"><i class="dot et"></i>Enhancing</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Right: login form ── -->
+    <section class="right">
+      <div class="form-header">
+        <div class="eyebrow">Authorized Physicians Only</div>
+        <h2>Clinical Sign In</h2>
+        <p>Access your assigned case database and AI consult tools.</p>
+      </div>
+
+      <div id="instBadge"></div>
+
+      <form id="loginForm" autocomplete="on">
+        <div class="field">
+          <input id="username" name="username" type="text" placeholder=" "
+                 autocomplete="username" required />
+          <label for="username">Username</label>
+          <div class="line"></div>
+        </div>
+
+        <div class="field">
+          <input id="password" name="password" type="password" placeholder=" "
+                 autocomplete="current-password" required />
+          <label for="password">Password</label>
+          <div class="line"></div>
+        </div>
+
+        <div id="status"></div>
+
+        <button class="btn-submit" id="submitBtn" type="submit">
+          Access Platform &rarr;
+        </button>
+      </form>
+
+      <div class="creds">
+        <div>Demo accounts &mdash; physician credentials:</div>
+        <div><kbd>doctor</kbd> / <kbd>doctor123</kbd> &nbsp;&middot;&nbsp; General Demo</div>
+        <div><kbd>dr.chen</kbd> / <kbd>chen2025</kbd> &nbsp;&middot;&nbsp; Johns Hopkins Neuro-Oncology</div>
+        <div><kbd>dr.smith</kbd> / <kbd>smith2025</kbd> &nbsp;&middot;&nbsp; UCSF Brain Tumor Center</div>
+      </div>
+
+      <div class="footer-note">&copy; 2026 Salynt Inc. &mdash; Protected Clinical Environment</div>
+    </section>
+  </div>
+
+  <script>
+  /* ═══════════════════════════════════════════
+     1.  Medical MRI Scanning Background
+  ═══════════════════════════════════════════ */
+  (() => {
+    const cv = document.getElementById("bgCanvas");
+    const ctx = cv.getContext("2d");
+    let W, H;
+
+    function resize() {
+      W = cv.width = window.innerWidth;
+      H = cv.height = window.innerHeight;
+    }
+
+    let phase = 0;
+    let scanY = 0;
+    let mouse = { x: -1000, y: -1000 };
+
+    // Draw a single scalable brain slice in the grid
+    function drawBrainSlice(cx, cy, scale, zRatio, t, scanL) {
+       // outer shape size based on Z axis position
+       let zScale = 0.4 + 0.6 * Math.sin(zRatio * Math.PI);
+       if (zScale < 0.45) return;
+       let s = scale * zScale;
+       
+       let distToScan = Math.abs(cy - scanL);
+       let scanGlow = Math.max(0, 1 - distToScan / (H * 0.25));
+       let alphaBase = 0.06 + scanGlow * 0.25;
+       let strokeColor = `rgba(124, 58, 237, ${alphaBase})`;
+
+       ctx.lineWidth = 1.2;
+       
+       // Symmetrical hemispheres
+       for (let dir of [-1, 1]) {
+           ctx.beginPath();
+           for(let th= -Math.PI/2; th <= Math.PI/2; th += 0.08) {
+               let frontPinch = Math.exp(-Math.pow(th - Math.PI/2, 2) * 5) * 0.15 * s;
+               let backPinch = Math.exp(-Math.pow(th + Math.PI/2, 2) * 5) * 0.15 * s;
+               let noise = (Math.sin(th * 12 + t * dir) + Math.cos(th * 20 - t)) * 0.03 * s;
+               
+               let x = dir * (Math.cos(th) * s * 0.72 - frontPinch - backPinch + noise);
+               let y = Math.sin(th) * s * 1.05;
+               if (th === -Math.PI/2) ctx.moveTo(cx + x, cy + y);
+               else ctx.lineTo(cx + x, cy + y);
+           }
+           ctx.strokeStyle = strokeColor;
+           ctx.stroke();
+
+           // Inner structural rings (cortex/white matter)
+           for (let ring = 0.75; ring > 0.3; ring -= 0.2) {
+               ctx.beginPath();
+               for(let th= -Math.PI/2; th <= Math.PI/2; th += 0.12) {
+                   let noise = (Math.sin(th * 15 + t * 2) + Math.cos(th * 25)) * 0.02 * s;
+                   let x = dir * (Math.cos(th) * s * 0.7 * ring + noise);
+                   let y = Math.sin(th) * s * 1.05 * ring + noise;
+                   if (th === -Math.PI/2) ctx.moveTo(cx + x, cy + y);
+                   else ctx.lineTo(cx + x, cy + y);
+               }
+               ctx.strokeStyle = `rgba(6, 182, 212, ${alphaBase * ring * 0.6})`;
+               ctx.stroke();
+           }
+       }
+
+       // Tumor rendering in mid-Z slices
+       if (zRatio > 0.25 && zRatio < 0.75) {
+           let tScale = Math.sin((zRatio - 0.25) / 0.5 * Math.PI);
+           const regions = [
+             { s: 0.35, c: "82,214,255" },  // WT (Cyan)
+             { s: 0.18, c: "168,85,247" },  // TC (Purple)
+             { s: 0.09, c: "52,211,153" }   // ET (Green)
+           ];
+           
+           let tx = cx + 0.28 * s;
+           let ty = cy - 0.15 * s;
+           
+           regions.forEach(reg => {
+               ctx.beginPath();
+               let rBase = reg.s * s * tScale;
+               for(let a=0; a<=Math.PI*2; a+=0.15) {
+                   let noise = (Math.sin(a*4 + t*3) + Math.cos(a*7 - t*2)) * rBase * 0.15;
+                   let rx = rBase + noise;
+                   let x = tx + rx * Math.cos(a);
+                   let y = ty + rx * Math.sin(a);
+                   if (a===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+               }
+               let tAlpha = 0.08 + scanGlow * 0.4;
+               let bAlpha = 0.2 + scanGlow * 0.5;
+               ctx.fillStyle = `rgba(${reg.c}, ${tAlpha})`;
+               ctx.fill();
+               ctx.strokeStyle = `rgba(${reg.c}, ${bAlpha})`;
+               ctx.lineWidth = 1;
+               ctx.stroke();
+           });
+       }
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      phase += 0.012;
+      
+      // Auto-sweeping scanner
+      scanY = (phase * 120) % (H + 400) - 200;
+      
+      // Mouse interaction (pulls the scanner line if active)
+      let actualScanY = scanY;
+      if (mouse.y > 0) {
+          actualScanY = mouse.y + Math.sin(phase*5) * 10;
+      }
+
+      // Grid sizing setup
+      const Cols = Math.max(2, Math.ceil(W / 240));
+      const Rows = Math.max(2, Math.ceil(H / 240));
+      const cellW = W / Cols;
+      const cellH = H / Rows;
+      const Total = Rows * Cols;
+
+      // Draw faint tech tracking grid
+      ctx.beginPath();
+      for(let x=0; x<=W; x+=cellW) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+      for(let y=0; y<=H; y+=cellH) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      ctx.strokeStyle = "rgba(124, 58, 237, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Render MRI grid cells
+      for (let r = 0; r < Rows; r++) {
+        for (let c = 0; c < Cols; c++) {
+          let idx = r * Cols + c;
+          let zRatio = idx / Total;
+          
+          let cx_ = c * cellW + cellW/2;
+          let cy_ = r * cellH + cellH/2;
+          let scale = Math.min(cellW, cellH) * 0.38;
+          
+          // Slice telemetry text
+          ctx.fillStyle = "rgba(103, 232, 249, 0.25)";
+          ctx.font = "10px 'SF Mono', monospace";
+          ctx.fillText(`SEQ:${String(idx+1).padStart(2,'0')} Z:${(zRatio*100).toFixed(1)}`, c * cellW + 10, r * cellH + 20);
+
+          drawBrainSlice(cx_, cy_, scale, zRatio, phase, actualScanY);
+        }
+      }
+
+      // Draw active scanner laser beam
+      ctx.fillStyle = "rgba(6, 182, 212, 0.08)";
+      ctx.fillRect(0, actualScanY - 60, W, 60);
+      ctx.beginPath();
+      ctx.moveTo(0, actualScanY);
+      ctx.lineTo(W, actualScanY);
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = "#06b6d4";
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      
+      // Global Medical HUD Telemetry
+      ctx.fillStyle = "rgba(103, 232, 249, 0.4)";
+      ctx.font = "12px 'SF Mono', monospace";
+      let dy = 30;
+      ctx.fillText("PATIENT_ID: ANON-8891", 20, dy); dy+=20;
+      ctx.fillText("PROTOCOL: BraTS_SEG_AUTO", 20, dy); dy+=20;
+      ctx.fillText("MODEL: nnU-Net 3D_FULLRES", 20, dy); dy+=20;
+      ctx.fillText(`SCAN_PHASE: ${phase.toFixed(3)}`, 20, dy);
+
+      ctx.fillText("REAL-TIME INFERENCE ACTIVE", W - 220, 30);
+      ctx.fillText("WT / TC / ET VOLUMETRICS", W - 220, 50);
+
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("mousemove", e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener("mouseleave", () => { mouse.x = -1000; mouse.y = -1000; });
+    resize();
+    frame();
+  })();
+
+  /* ═══════════════════════════════════════════
+     2.  Brain segmentation canvas (left panel)
+  ═══════════════════════════════════════════ */
+  (() => {
+    const wrap  = document.getElementById("vizWrap");
+    const cv    = document.getElementById("segCanvas");
+    const lbl   = document.getElementById("sliceLabel");
+    const ctx   = cv.getContext("2d");
+    const ptr   = { x: .5, y: .5 };
+    let phase   = 0, raf = null;
+    const dpr   = () => Math.min(2, window.devicePixelRatio || 1);
+
+    function resize() {
+      const r = wrap.getBoundingClientRect();
+      const d = dpr();
+      cv.width  = Math.floor(r.width  * d);
+      cv.height = Math.floor(r.height * d);
+      ctx.setTransform(d, 0, 0, d, 0, 0);
+    }
+
+    function noisyEllipse(cx, cy, rx, ry, wobble, pts = 180) {
+      const arr = [];
+      for (let i = 0; i <= pts; i++) {
+        const a = (i / pts) * Math.PI * 2;
+        const n = Math.sin(a * 4 + phase * 1.7) * wobble
+                + Math.cos(a * 7 - phase * 1.3) * wobble * .5;
+        arr.push([cx + (rx + n) * Math.cos(a), cy + (ry + n) * Math.sin(a)]);
+      }
+      return arr;
+    }
+
+    function drawRegion(pts, fill, stroke, blur) {
+      ctx.save();
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+      ctx.closePath();
+      ctx.shadowBlur = blur; ctx.shadowColor = stroke;
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.shadowBlur = 0; ctx.lineWidth = 1.5; ctx.strokeStyle = stroke; ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawScanGrid(w, h, t) {
+      const step = 20, off = (t * .7) % step;
+      ctx.save(); ctx.globalAlpha = .12; ctx.strokeStyle = "#8b5cf6"; ctx.lineWidth = 1;
+      for (let x = off - step; x < w + step; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      for (let y = off - step; y < h + step; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function render() {
+      const w = cv.clientWidth, h = cv.clientHeight;
+      phase += .016;
+      const cx = w * (.5 + (ptr.x - .5) * .07);
+      const cy = h * (.52 + (ptr.y - .5) * .07);
+      ctx.clearRect(0, 0, w, h);
+
+      // bg
+      const bg = ctx.createRadialGradient(cx, cy, 20, cx, cy, Math.max(w, h) * .75);
+      bg.addColorStop(0, "rgba(60,20,120,.35)");
+      bg.addColorStop(1, "rgba(2,6,20,.90)");
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+
+      drawScanGrid(w, h, phase * 8);
+
+      const pulse = 1 + Math.sin(phase * 2.2) * .03;
+      const outer = noisyEllipse(cx, cy, w * .22 * pulse, h * .28 * pulse, 2.5);
+      const core  = noisyEllipse(cx + 5 * Math.sin(phase * 1.3), cy - 4 * Math.cos(phase),
+                                 w * .13 * pulse, h * .18 * pulse, 2.1);
+      const enh   = noisyEllipse(cx - 8 * Math.cos(phase * 1.1), cy + 3 * Math.sin(phase * 1.5),
+                                 w * .07 * pulse, h * .10 * pulse, 1.7);
+
+      drawRegion(outer, "rgba(82,214,255,.16)",  "rgba(82,214,255,.90)",  18);
+      drawRegion(core,  "rgba(168,85,247,.16)",  "rgba(168,85,247,.90)",  15);
+      drawRegion(enh,   "rgba(52,211,153,.18)",  "rgba(52,211,153,.90)",  14);
+
+      // scan rings
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(168,85,247,.30)"; ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        const r = (i + 1) * 22 + Math.sin(phase * 2.8 + i) * 4;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+
+      const z = 55 + Math.floor((Math.sin(phase * 1.3) + 1) * 22);
+      lbl.textContent = `Z: ${String(z).padStart(3, "0")}`;
+
+      raf = requestAnimationFrame(render);
+    }
+
+    wrap.addEventListener("mousemove", e => {
+      const r = wrap.getBoundingClientRect();
+      ptr.x = (e.clientX - r.left) / r.width;
+      ptr.y = (e.clientY - r.top)  / r.height;
+    });
+    wrap.addEventListener("mouseleave", () => { ptr.x = .5; ptr.y = .5; });
+    window.addEventListener("resize", resize);
+    resize(); render();
+    window.addEventListener("beforeunload", () => raf && cancelAnimationFrame(raf));
+  })();
+
+  /* ═══════════════════════════════════════════
+     3.  Stat counter animation
+  ═══════════════════════════════════════════ */
+  (() => {
+    document.querySelectorAll(".stat-n[data-target]").forEach(el => {
+      const target = parseFloat(el.dataset.target);
+      const dec    = parseInt(el.dataset.dec || "0");
+      const dur    = 1800, step = 16;
+      let current  = 0, elapsed = 0;
+      const timer  = setInterval(() => {
+        elapsed += step;
+        current  = target * Math.min(1, elapsed / dur);
+        el.textContent = current.toFixed(dec);
+        if (elapsed >= dur) { el.textContent = target.toFixed(dec); clearInterval(timer); }
+      }, step);
+    });
+  })();
+
+  /* ═══════════════════════════════════════════
+     4.  Login form
+  ═══════════════════════════════════════════ */
+  (() => {
+    const form      = document.getElementById("loginForm");
+    const uInput    = document.getElementById("username");
+    const pInput    = document.getElementById("password");
+    const statusEl  = document.getElementById("status");
+    const instBadge = document.getElementById("instBadge");
+    const submitBtn = document.getElementById("submitBtn");
+
+    function setStatus(text, type = "") {
+      statusEl.textContent = text;
+      statusEl.className   = type;
+    }
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const u = uInput.value.trim();
+      const p = pInput.value;
+      if (!u || !p) { setStatus("Please enter username and password.", "err"); return; }
+
+      submitBtn.disabled = true;
+      setStatus("Authenticating…");
+
+      try {
+        const resp = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await resp.json().catch(() => ({}));
+
+        if (!resp.ok || !data.ok) {
+          setStatus("Invalid credentials — access denied.", "err");
+          submitBtn.disabled = false;
+          return;
+        }
+
+        // Store everything including caseRoot for doctor.html
+        localStorage.setItem("salynt_token", data.token || "");
+        localStorage.setItem("salynt_user", JSON.stringify({
+          userId:      data.userId,
+          displayName: data.displayName,
+          institution: data.institution || "",
+          caseRoot:    data.caseRoot    || "/viewer/cases"
+        }));
+
+        // Show welcome badge
+        instBadge.textContent = `✓ Welcome, ${data.displayName}  ·  ${data.institution || ""}`;
+        instBadge.classList.add("show");
+        setStatus("", "ok");
+
+        // Short delay so user sees the welcome, then navigate
+        setTimeout(() => { window.location.href = "/doctor.html"; }, 700);
+
+      } catch (err) {
+        setStatus("Network error — please try again.", "err");
+        submitBtn.disabled = false;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

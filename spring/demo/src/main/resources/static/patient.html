@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>SmartMed · AI Segmentation Workstation</title>
+  <link rel="stylesheet" href="/assets/viewer.css"/>
+</head>
+<body>
+
+<header class="appHeader">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brandTxt">
+        <div class="brandTitle">SmartMed · AI Segmentation Workstation</div>
+        <div class="brandSub">MRI / NIfTI Viewer + Segmentation Overlay</div>
+      </div>
+    </div>
+
+    <div class="patientMini">
+      <div class="avatar" id="pAvatar">--</div>
+      <div class="pInfo">
+        <div class="pName" id="pName">Guest Patient</div>
+        <div class="pMeta">
+          <span id="pId">ID: --</span>
+          <span class="dotSep">•</span>
+          <span id="pDemo">-- / --</span>
+        </div>
+      </div>
+
+      <div class="pill">
+        <span class="dot"></span>
+        <span id="log">Ready</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="appMain">
+  <div class="grid3">
+    <section class="card">
+      <div class="cardHd">
+        <h2>Imaging Viewer (2D + 3D)</h2>
+        <div class="metaRight" id="careTeam"></div>
+      </div>
+
+      <div class="cardBd">
+        <div class="toolbar">
+          <div class="tool">
+            <label>Slice Z-Axis</label>
+            <input id="slice" type="range" min="0" max="100" value="50">
+          </div>
+          <div class="tool">
+            <label>Overlay Opacity</label>
+            <input id="opacity" type="range" min="0" max="1" step="0.1" value="0.7">
+          </div>
+          <div class="tool">
+            <label>3D Threshold (Cut Skin)</label>
+            <input id="threshold3d" type="range" min="0" max="100" value="15">
+          </div>
+          <div class="tool">
+            <label>3D Auto Rotate</label>
+            <input id="autoRotate" type="checkbox" checked>
+          </div>
+          <div class="tool">
+            <label>Case Selector</label>
+            <div class="caseRow">
+              <select id="caseSel"></select>
+              <button class="btnPrimary" id="caseLoad">Load</button>
+            </div>
+          </div>
+          <div class="tool">
+            <label>Model</label>
+            <select id="modelSel"></select>
+          </div>
+          <div class="tool">
+            <label>Detailed Viewer</label>
+            <a class="btnPrimary btnLight" id="openViewer" href="/viewer/index.html" target="_blank" rel="noopener">Open Viewer</a>
+          </div>
+        </div>
+
+        <div class="grid2x2">
+          <div class="viewport">
+            <div class="vpTag">AXIAL</div>
+            <canvas id="cAxial"></canvas>
+            <div class="legend">
+              <div class="li"><span class="sw red"></span>Label 1 · Necrotic / Non-Enhancing Core</div>
+              <div class="li"><span class="sw green"></span>Label 2 · Edema</div>
+              <div class="li"><span class="sw blue"></span>Label 4 · Enhancing Tumor</div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="vpTag">CORONAL</div>
+            <canvas id="cCoronal"></canvas>
+            <div class="legend">
+              <div class="li"><span class="sw red"></span>Label 1 · Necrotic / Non-Enhancing Core</div>
+              <div class="li"><span class="sw green"></span>Label 2 · Edema</div>
+              <div class="li"><span class="sw blue"></span>Label 4 · Enhancing Tumor</div>
+            </div>
+          </div>
+          <div class="viewport">
+            <div class="vpTag">SAGITTAL</div>
+            <canvas id="cSagittal"></canvas>
+            <div class="legend">
+              <div class="li"><span class="sw red"></span>Label 1 · Necrotic / Non-Enhancing Core</div>
+              <div class="li"><span class="sw green"></span>Label 2 · Edema</div>
+              <div class="li"><span class="sw blue"></span>Label 4 · Enhancing Tumor</div>
+            </div>
+          </div>
+          <div class="viewport threed" id="vp3d">
+            <div class="vpTag warn">3D VOLUME RENDERING</div>
+            <canvas id="c3d"></canvas>
+            <div class="hint3d">Drag to Rotate • Scroll to Zoom</div>
+            <div class="legend">
+              <div class="li"><span class="sw red"></span>Label 1 · Necrotic / Non-Enhancing Core</div>
+              <div class="li"><span class="sw green"></span>Label 2 · Edema</div>
+              <div class="li"><span class="sw blue"></span>Label 4 · Enhancing Tumor</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rightStack">
+      <section class="card">
+        <div class="cardHd">
+          <h2>Segmentation Metrics</h2>
+          <div class="metaRight"><span class="tag ok">WT / TC / ET</span></div>
+        </div>
+        <div class="cardBd">
+          <div class="metrics">
+            <div class="metricBox">
+              <div class="t">Whole Tumor</div>
+              <div class="v" id="diceWT">--</div>
+            </div>
+            <div class="metricBox">
+              <div class="t">Tumor Core</div>
+              <div class="v" id="diceTC">--</div>
+            </div>
+            <div class="metricBox">
+              <div class="t">Enhancing</div>
+              <div class="v" id="diceET">--</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="cardHd">
+          <h2>Patient Snapshot</h2>
+          <div class="metaRight"><span class="tag">Updated: <span id="snapUpdated">--</span></span></div>
+        </div>
+        <div class="cardBd">
+          <div class="snapGrid">
+            <div class="snapItem">
+              <div class="k">Primary Diagnosis</div>
+              <div class="v" id="snapDx">--</div>
+            </div>
+            <div class="snapItem">
+              <div class="k">Tumor Location</div>
+              <div class="v" id="snapLoc">--</div>
+            </div>
+            <div class="snapItem">
+              <div class="k">Latest Modality</div>
+              <div class="v" id="snapModal">--</div>
+            </div>
+            <div class="snapItem">
+              <div class="k">Scan Date</div>
+              <div class="v" id="snapScan">--</div>
+            </div>
+            <div class="snapItem">
+              <div class="k">Medications</div>
+              <div class="v" id="snapMeds">--</div>
+            </div>
+            <div class="snapItem">
+              <div class="k">Next Steps</div>
+              <div class="v" id="snapPlan">--</div>
+            </div>
+          </div>
+          <div class="findings">
+            <div class="k">AI Findings & Flags</div>
+            <ul id="snapFindings"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="cardHd">
+          <h2>History</h2>
+        </div>
+        <div class="cardBd">
+          <div id="histList">Loading...</div>
+        </div>
+      </section>
+    </aside>
+
+    <aside class="aiStack">
+      <section class="card">
+        <div class="cardHd">
+          <h2>AI Assistant</h2>
+          <button class="btnPrimary" onclick="runSelfCheck()">Self Check</button>
+        </div>
+
+        <div class="cardBd tabBody">
+          <div class="tabPanel" style="display:flex">
+            <div class="chatBox" id="chat">
+              <div class="msg ai pinned" id="aiBackgroundBox" style="display:none"></div>
+            </div>
+            <div class="chatInput">
+              <input id="chatIn" placeholder="Ask about the tumor location...">
+              <button class="btnPrimary" onclick="sendChat()">Send</button>
+              <button class="btnPrimary btnLight" onclick="runConsult()">Consult</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<script src="/nifti-reader.js"></script>
+<script>
+const API_ME = "/api/patient/me";
+const el = id => document.getElementById(id);
+const WELCOME_MD = "Hi! I'm your clinical assistant. 🙂\n\n"
+  + "What would you like to do?\n"
+  + "1) Review current imaging/segmentation results\n"
+  + "2) Discuss differential diagnosis and next steps\n"
+  + "3) Draft a radiology or clinical note\n\n"
+  + "You can also tell me the main symptoms and what you want to focus on.";
+let welcomeShown = false;
+
+// State
+let state = {
+  mri: null, pred: null,
+  caseId: "BraTS2021_00012",
+  model: "gemini-3-flash-preview",
+  angleY: 0.5, angleX: 0.2, // Initial 3D angle
+    isDrag: false, lastX: 0, lastY: 0,
+    autoRotate: true,
+    _stats: null,
+    aiBackground: "",
+    aiBackgroundCase: "",
+    aiBackgroundModel: "",
+    aiBackgroundLoading: false
+};
+
+const MODELS = [
+  { id: "gemini-3-flash-preview", label: "gemini-3-flash-preview" },
+  { id: "gemini-3-pro-preview", label: "gemini-3-pro-preview" }
+];
+
+const CASES = [
+  { id: "BraTS2021_00012", label: "BraTS2021_00012 (WT Dice 0.98)" },
+  { id: "BraTS2021_00008", label: "BraTS2021_00008 (WT Dice 0.93)" },
+  { id: "BraTS2021_00011", label: "BraTS2021_00011 (WT Dice 0.89)" },
+  { id: "BraTS2021_00014", label: "BraTS2021_00014 (WT Dice 0.89)" },
+  { id: "BraTS2021_00006", label: "BraTS2021_00006 (WT Dice 0.87)" },
+  { id: "BraTS2021_00009", label: "BraTS2021_00009 (WT Dice 0.87)" },
+  { id: "BraTS2021_00002", label: "BraTS2021_00002 (WT Dice 0.87)" },
+  { id: "BraTS2021_00005", label: "BraTS2021_00005 (WT Dice 0.86)" },
+  { id: "BraTS2021_00003", label: "BraTS2021_00003 (WT Dice 0.84)" },
+  { id: "BraTS2021_00000", label: "BraTS2021_00000 (WT Dice 0.50)" }
+];
+
+function populateCaseSelect() {
+  const sel = el('caseSel');
+  if(!sel) return;
+  sel.innerHTML = CASES.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+  sel.value = state.caseId;
+}
+
+function populateModelSelect() {
+  const sel = el('modelSel');
+  if(!sel) return;
+  sel.innerHTML = MODELS.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+  sel.value = state.model;
+}
+
+function updateViewerLink() {
+  const link = el('openViewer');
+  if (!link) return;
+  const cid = encodeURIComponent(state.caseId || '');
+  link.href = cid ? `/viewer/index.html?case=${cid}` : '/viewer/index.html';
+}
+
+function ensureCaseOption(id) {
+  const sel = el('caseSel');
+  if(!sel || !id) return;
+  if(!Array.from(sel.options).some(o => o.value === id)){
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    sel.appendChild(opt);
+  }
+  sel.value = id;
+}
+
+// 1. Initialize
+(async function init() {
+  if(!window.nifti) return log("Error: nifti-reader.js missing!");
+  
+  // Setup Controls
+  el('slice').oninput = render2D;
+  el('opacity').oninput = render2D;
+  el('threshold3d').oninput = () => { render3D(); }; // Re-render 3D on threshold change
+    const autoRotateEl = el('autoRotate');
+    if (autoRotateEl) {
+      state.autoRotate = autoRotateEl.checked;
+      autoRotateEl.onchange = e => { state.autoRotate = e.target.checked; };
+    }
+
+  populateCaseSelect();
+  populateModelSelect();
+  const caseSel = el('caseSel');
+  const caseLoad = el('caseLoad');
+  const modelSel = el('modelSel');
+  if(caseSel){
+    caseSel.onchange = e => { state.caseId = e.target.value; updateViewerLink(); };
+  }
+  if(caseLoad){
+    caseLoad.onclick = async () => { await loadData(); };
+  }
+  if(modelSel){
+    modelSel.onchange = async e => {
+      state.model = e.target.value;
+      state.aiBackground = "";
+      state.aiBackgroundCase = "";
+      state.aiBackgroundModel = "";
+      await prepareBackground();
+    };
+  }
+  
+  // 3D Interaction
+  const v3d = el('vp3d');
+  v3d.onmousedown = e => { state.isDrag=true; state.lastX=e.clientX; state.lastY=e.clientY; };
+  window.onmouseup = () => state.isDrag=false;
+  window.onmousemove = e => {
+    if(state.isDrag && state.mri) {
+      state.angleY += (e.clientX - state.lastX) * 0.01;
+      state.angleX += (e.clientY - state.lastY) * 0.01;
+      state.lastX = e.clientX; state.lastY = e.clientY;
+      requestAnimationFrame(render3D); // Only render on change
+    }
+  };
+
+  await loadPatient();
+  showWelcome();
+  updateViewerLink();
+  await loadData();
+})();
+
+let last3d = 0;
+function loop(ts){
+  if(state.autoRotate && state.mri){
+    if(ts - last3d > 80){
+      state.angleY += 0.06;
+      render3D();
+      last3d = ts;
+    } else {
+      state.angleY += 0.01;
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// 2. Load Patient Data (From Controller)
+async function loadPatient() {
+  try {
+    const res = await fetch(API_ME);
+    if(!res.ok) throw new Error("Auth Failed");
+    const data = await res.json();
+    
+    el('pName').innerText = data.name || "Unknown";
+    el('pAvatar').innerText = (data.name || "U").charAt(0);
+    el('pId').innerText = `ID: ${data.patientId || '--'}`;
+    el('pDemo').innerText = `${data.age ?? '--'}Y / ${data.gender ?? '--'}`;
+    
+    const careTeam = Array.isArray(data.careTeam) ? data.careTeam : [];
+    el('careTeam').innerHTML = careTeam.length ? careTeam.map(d => 
+      `<div>${d.role}: <b>${d.name}</b></div>`
+    ).join('') : "<div>No care team assigned.</div>";
+
+    const snap = data.snapshot || {};
+    el('snapUpdated').innerText = snap.updated || data.lastUpdated || "2026-01-25";
+    el('snapDx').innerText = snap.diagnosis || data.primaryDiagnosis || "Glioblastoma (suspected)";
+    el('snapLoc').innerText = snap.location || data.tumorLocation || "Right temporal lobe";
+    el('snapModal').innerText = snap.modality || data.latestModality || "MRI (T1/T2/FLAIR + CE)";
+    el('snapScan').innerText = snap.scanDate || data.lastScanDate || "2026-01-24";
+    el('snapMeds').innerText = snap.medications || data.medications?.join?.(', ') || "Dexamethasone 4mg, Levetiracetam 500mg";
+    el('snapPlan').innerText = snap.nextSteps || data.nextSteps || "Discuss surgical options; follow-up in 2 weeks";
+
+    const findings = (snap.findings || data.findings || [
+      { level: "Moderate", text: "Peritumoral edema present with midline shift < 3mm." },
+      { level: "High", text: "Enhancing component adjacent to temporal horn." },
+      { level: "Low", text: "No acute hemorrhage detected." }
+    ]);
+    el('snapFindings').innerHTML = findings.map(f =>
+      `<li><span class="badge ${String(f.level).toLowerCase()}">${f.level}</span>${f.text}</li>`
+    ).join('');
+
+    const demoVisits = [
+      {date: "2024-11-08", department: "Radiology", category: "imaging", summary: "Brain MRI performed (T1/T2/FLAIR with contrast). Noted right temporal lobe lesion with surrounding edema; recommended correlation with clinical symptoms and follow-up imaging."},
+      {date: "2024-08-19", department: "Neurology", category: "consult", summary: "Clinic visit for progressive headaches and short-term memory issues over 3 months. Neuro exam: mild word-finding difficulty; advised MRI and symptom diary."},
+      {date: "2024-05-27", department: "Oncology", category: "oncology", summary: "Discussion of potential treatment pathways pending imaging and biopsy results. Reviewed risks/benefits and the importance of multidisciplinary review."},
+      {date: "2023-12-03", department: "Emergency", category: "emergency", summary: "ED visit for acute headache and dizziness. CT head negative for acute hemorrhage; discharged with outpatient neuro follow-up instructions."},
+      {date: "2023-07-14", department: "Primary Care", category: "primary", summary: "Annual physical. Reported intermittent headaches and fatigue. Basic labs unremarkable; advised hydration and sleep hygiene, and to return if symptoms worsen."}
+    ];
+
+    const visits = Array.isArray(data.visits) && data.visits.length ? data.visits : demoVisits;
+    el('histList').innerHTML = visits.length ? visits.map(v => `
+      <div class="hist-item ${v.category || 'general'}">
+        <div class="h-date">${v.date || '--'} · ${v.department || 'Unknown'}</div>
+        <div class="h-txt">${v.summary || 'No visit summary available.'}</div>
+      </div>
+    `).join('') : "<div class='h-txt'>No visit history available.</div>";
+
+    if(data.studies?.[0]?.caseId) {
+      state.caseId = data.studies[0].caseId;
+      ensureCaseOption(state.caseId);
+      updateViewerLink();
+    }
+
+  } catch(e) {
+    log("Patient data load failed: " + e.message);
+    const fallback = {
+      patientId: "P-00000",
+      name: "Guest Patient",
+      gender: "Unknown",
+      age: "--",
+      careTeam: [],
+      visits: [
+        {date: "2024-11-08", department: "Radiology", category: "imaging", summary: "Brain MRI performed (T1/T2/FLAIR with contrast). Noted right temporal lobe lesion with surrounding edema; recommended correlation with clinical symptoms and follow-up imaging."},
+        {date: "2024-08-19", department: "Neurology", category: "consult", summary: "Clinic visit for progressive headaches and short-term memory issues over 3 months. Neuro exam: mild word-finding difficulty; advised MRI and symptom diary."},
+        {date: "2024-05-27", department: "Oncology", category: "oncology", summary: "Discussion of potential treatment pathways pending imaging and biopsy results. Reviewed risks/benefits and the importance of multidisciplinary review."},
+        {date: "2023-12-03", department: "Emergency", category: "emergency", summary: "ED visit for acute headache and dizziness. CT head negative for acute hemorrhage; discharged with outpatient neuro follow-up instructions."},
+        {date: "2023-07-14", department: "Primary Care", category: "primary", summary: "Annual physical. Reported intermittent headaches and fatigue. Basic labs unremarkable; advised hydration and sleep hygiene, and to return if symptoms worsen."}
+      ]
+    };
+    el('pName').innerText = fallback.name;
+    el('pAvatar').innerText = fallback.name.charAt(0);
+    el('pId').innerText = `ID: ${fallback.patientId}`;
+    el('pDemo').innerText = `${fallback.age} / ${fallback.gender}`;
+    el('snapUpdated').innerText = "2026-01-25";
+    el('snapDx').innerText = "Glioblastoma (suspected)";
+    el('snapLoc').innerText = "Right temporal lobe";
+    el('snapModal').innerText = "MRI (T1/T2/FLAIR + CE)";
+    el('snapScan').innerText = "2026-01-24";
+    el('snapMeds').innerText = "Dexamethasone 4mg, Levetiracetam 500mg";
+    el('snapPlan').innerText = "Discuss surgical options; follow-up in 2 weeks";
+    el('snapFindings').innerHTML = [
+      { level: "Moderate", text: "Peritumoral edema present with midline shift < 3mm." },
+      { level: "High", text: "Enhancing component adjacent to temporal horn." },
+      { level: "Low", text: "No acute hemorrhage detected." }
+    ].map(f => `<li><span class="badge ${String(f.level).toLowerCase()}">${f.level}</span>${f.text}</li>`).join('');
+    el('careTeam').innerHTML = "<div>No care team assigned.</div>";
+    el('histList').innerHTML = fallback.visits.map(v => `
+      <div class="hist-item ${v.category || 'general'}">
+        <div class="h-date">${v.date} · ${v.department}</div>
+        <div class="h-txt">${v.summary}</div>
+      </div>
+    `).join('');
+  }
+}
+
+// 3. Load Images
+async function loadData() {
+  log(`Loading ${state.caseId}...`);
+  try {
+    if (state.aiBackgroundCase !== state.caseId || state.aiBackgroundModel !== state.model) {
+      state.aiBackground = "";
+      state.aiBackgroundCase = "";
+      state.aiBackgroundModel = "";
+    }
+    updateViewerLink();
+    ensureCaseOption(state.caseId);
+    const root = `/viewer/cases/${state.caseId}`;
+    const [mri, pred, met] = await Promise.all([
+      readNii(`${root}/flair.nii.gz`),
+      readNii(`${root}/pred.nii.gz`),
+      fetch(`${root}/metrics.json`).then(r=>r.json()).catch(()=>null)
+    ]);
+    state.mri = mri; state.pred = pred;
+    state._stats = null;
+    
+    // Setup Slice Slider
+    const dims = mri.dims; // [X, Y, Z]
+    el('slice').max = dims[2]-1;
+    el('slice').value = Math.floor(dims[2]/2);
+    
+    // Metrics
+    const fallbackDice = { WT: 0.50, TC: 0.01, ET: 0.00 };
+    const dice = extractDice(met) || fallbackDice;
+    el('diceWT').innerText = (dice.WT ?? fallbackDice.WT).toFixed(2);
+    el('diceTC').innerText = (dice.TC ?? fallbackDice.TC).toFixed(2);
+    el('diceET').innerText = (dice.ET ?? fallbackDice.ET).toFixed(2);
+    
+    render2D();
+    render3D(); // Initial 3D render
+    prepareBackground();
+    log("Ready.");
+  } catch(e) {
+    log(e.message);
+    el('diceWT').innerText = "0.50";
+    el('diceTC').innerText = "0.01";
+    el('diceET').innerText = "0.00";
+  }
+}
+
+async function prepareBackground() {
+  if (state.aiBackgroundLoading || (state.aiBackgroundCase === state.caseId && state.aiBackgroundModel === state.model)) return;
+  state.aiBackgroundLoading = true;
+  const payload = {
+    caseId: state.caseId,
+    sliceZ: parseInt(el('slice').value),
+    model: state.model
+  };
+
+  fetch('/api/ai/background', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data?.ok) {
+      state.aiBackground = data.background || data.rawText || '';
+      state.aiBackgroundCase = state.caseId;
+      state.aiBackgroundModel = state.model;
+      if (state.aiBackground) updateChatBackground(state.aiBackground);
+    }
+  })
+  .catch(() => {})
+  .finally(() => { state.aiBackgroundLoading = false; });
+}
+
+function updateChatBackground(text) {
+  const box = el('aiBackgroundBox');
+  if (!box || !text) return;
+  box.innerHTML = renderMarkdown(`AI Background Summary:\n${text}`);
+  box.style.display = 'block';
+}
+
+function extractDice(met){
+  if(!met) return null;
+  if(met.WT_dice != null || met.TC_dice != null || met.ET_dice != null){
+    return {
+      WT: met.WT_dice ?? 0,
+      TC: met.TC_dice ?? 0,
+      ET: met.ET_dice ?? 0
+    };
+  }
+  if(met.regions){
+    return {
+      WT: met.regions.WT?.dice ?? 0,
+      TC: met.regions.TC?.dice ?? 0,
+      ET: met.regions.ET?.dice ?? 0
+    };
+  }
+  return null;
+}
+
+const clamp01 = x => Math.max(0, Math.min(1, x));
+function ensure3DStats() {
+  if(state._stats) return state._stats;
+  const v = state.mri.data;
+  const n = v.length;
+  let mn = Infinity, mx = -Infinity;
+  for(let i=0; i<20000; i++){
+    const idx = (Math.random() * n) | 0;
+    const val = v[idx];
+    if(val < mn) mn = val;
+    if(val > mx) mx = val;
+  }
+  const center = (mn + mx) * 0.5;
+  const width  = Math.max(1, (mx - mn));
+  state._stats = { mn, mx, center, width };
+  return state._stats;
+}
+function wlNormalize(val, center, width){
+  const lo = center - width * 0.5;
+  return clamp01((val - lo) / width);
+}
+function render3D() {
+  if(!state.mri || !state.pred) return;
+  const canvas = el('c3d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: false });
+  const [X, Y, Z] = state.mri.dims;
+  const scale = 0.6;
+  const w = Math.max(160, Math.floor(X * scale));
+  const h = Math.max(160, Math.floor(Z * scale));
+  if(canvas.width !== w) { canvas.width = w; canvas.height = h; }
+  const img = ctx.createImageData(w, h);
+  const buf = img.data;
+  const threshold = parseInt(el('threshold3d').value);
+  const stats = ensure3DStats();
+  const wlC = stats.center;
+  const wlW = stats.width;
+  const cx = X * 0.5, cy = Y * 0.5, cz = Z * 0.5;
+  const cosY = Math.cos(state.angleY), sinY = Math.sin(state.angleY);
+  const step = 2;
+
+  for(let py=0; py<h; py++){
+    for(let px=0; px<w; px++){
+      let accA = 0, accR = 0, accG = 0, accB = 0;
+      const ox0 = (px / scale) - cx;
+      const oz0 = (py / scale) - cz;
+      for(let depth=0; depth<Y; depth+=step){
+        if(accA > 0.985) break;
+        const oy0 = depth - cy;
+        const rx = (cx + (ox0 * cosY - oy0 * sinY)) | 0;
+        const ry = (cy + (ox0 * sinY + oy0 * cosY)) | 0;
+        const rz = (cz - oz0) | 0;
+        if(rx<0||rx>=X||ry<0||ry>=Y||rz<0||rz>=Z) continue;
+        const idx = rx + ry*X + rz*X*Y;
+        const raw = state.mri.data[idx];
+        if(raw <= threshold) continue;
+        const lbl = state.pred.data[idx];
+        const n = wlNormalize(raw, wlC, wlW);
+        const tissue = Math.pow(n, 1.6);
+        let srcA = tissue * 0.08;
+        let srcR = n, srcG = n, srcB = n;
+        if(lbl > 0){
+          let tr=0, tg=0, tb=0;
+          if(lbl === 1) { tr = 1.0; }
+          else if(lbl === 2) { tg = 1.0; }
+          else if(lbl === 4) { tb = 1.0; tr=0.25; }
+          const tumA = 0.35;
+          srcR = srcR*(1-0.65) + tr*0.65;
+          srcG = srcG*(1-0.65) + tg*0.65;
+          srcB = srcB*(1-0.65) + tb*0.65;
+          srcA = Math.min(0.95, srcA + tumA);
+        }
+        const oneMinusA = (1 - accA);
+        accR += oneMinusA * srcR * srcA;
+        accG += oneMinusA * srcG * srcA;
+        accB += oneMinusA * srcB * srcA;
+        accA += oneMinusA * srcA;
+      }
+      const p = (py*w + px) * 4;
+      buf[p]   = Math.min(255, (accR * 255) | 0);
+      buf[p+1] = Math.min(255, (accG * 255) | 0);
+      buf[p+2] = Math.min(255, (accB * 255) | 0);
+      buf[p+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// 5. Standard 2D Views
+function render2D() {
+  if(!state.mri) return;
+  const z = parseInt(el('slice').value);
+  const alpha = parseFloat(el('opacity').value);
+  const [X, Y, Z] = state.mri.dims;
+  
+  drawSlice(el('cAxial'), 'ax', z, alpha);
+  drawSlice(el('cCoronal'), 'co', Math.floor(Y/2), alpha);
+  drawSlice(el('cSagittal'), 'sa', Math.floor(X/2), alpha);
+}
+
+function drawSlice(cvs, axis, idx, alpha) {
+  const m = getPlane(state.mri, axis, idx);
+  const p = getPlane(state.pred, axis, idx);
+  if(cvs.width !== m.w) { cvs.width = m.w; cvs.height = m.h; }
+  
+  const ctx = cvs.getContext('2d');
+  const idata = ctx.createImageData(m.w, m.h);
+  const d = idata.data;
+  
+  // Normalize
+  let max=0; for(let v of m.data) if(v>max) max=v; 
+  
+  for(let i=0; i<m.data.length; i++) {
+    const val = (m.data[i]/max)*255;
+    const lbl = p.data[i];
+    const k = i*4;
+    
+    d[k]=val; d[k+1]=val; d[k+2]=val; d[k+3]=255; // Gray base
+    
+    if(lbl > 0) {
+      // Overlay
+      const c = lbl==1?[255,50,50] : lbl==2?[50,255,50] : [50,100,255];
+      d[k] = d[k]*(1-alpha) + c[0]*alpha;
+      d[k+1] = d[k+1]*(1-alpha) + c[1]*alpha;
+      d[k+2] = d[k+2]*(1-alpha) + c[2]*alpha;
+    }
+  }
+  ctx.putImageData(idata, 0, 0);
+}
+
+// Utils
+async function readNii(url) {
+  const b = await fetch(url).then(r=>r.arrayBuffer());
+  const dec = nifti.isCompressed(b) ? nifti.decompress(b) : b;
+  const h = nifti.readHeader(dec);
+  const img = nifti.readImage(h, dec);
+  
+  // Convert to Float32
+  let data;
+  if (h.datatypeCode === 2) data = new Uint8Array(img);
+  else if (h.datatypeCode === 4) data = new Int16Array(img);
+  else if (h.datatypeCode === 16) data = new Float32Array(img);
+  else data = new Uint8Array(img); // Fallback
+  
+  return { data, dims: [h.dims[1], h.dims[2], h.dims[3]] };
+}
+
+function getPlane(vol, axis, idx) {
+  const [X,Y,Z] = vol.dims;
+  let w, h, buf;
+  if(axis==='ax') { // Z fixed
+    w=X; h=Y; buf = new Float32Array(w*h);
+    const off = idx*w*h;
+    for(let i=0; i<w*h; i++) buf[i] = vol.data[off+i];
+  } else if (axis==='co') { // Y fixed
+    w=X; h=Z; buf = new Float32Array(w*h);
+    for(let z=0; z<h; z++) for(let x=0; x<w; x++) buf[z*w+x] = vol.data[x + idx*X + z*X*Y];
+  } else { // X fixed
+    w=Y; h=Z; buf = new Float32Array(w*h);
+    for(let z=0; z<h; z++) for(let y=0; y<w; y++) buf[z*w+y] = vol.data[idx + y*X + z*X*Y];
+  }
+  return { w, h, data: buf };
+}
+
+function setTab(t, evt) {
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.content').forEach(e=>e.style.display='none');
+  if (evt && evt.target) evt.target.classList.add('active');
+  el('tab-'+t).style.display = 'flex';
+}
+
+function log(s) { el('log').innerText = s; }
+
+function runSelfCheck(){
+  addMsg('ai', 'Running self-check...');
+  fetch('/api/ai/selfcheck?testGemini=true')
+    .then(r => r.json())
+    .then(d => {
+      const sidecarOk = d?.sidecar?.ok ? 'OK' : 'FAIL';
+      
+      let geminiStatus = 'FAIL';
+      if (d?.gemini?.tested === true) geminiStatus = 'OK';
+      else if (!d?.gemini?.configured) geminiStatus = 'FAIL (Missing API Key)';
+      else geminiStatus = 'FAIL (API Error)';
+
+      const scErr = d?.sidecar?.error ? `\n  Error: ${d.sidecar.error}` : '';
+      const gmErr = d?.gemini?.error ? `\n  Error: ${d.gemini.error}` : '';
+      const scBase = d?.sidecar?.baseUrl ? `\n  URL: ${d.sidecar.baseUrl}` : '';
+      const gmBase = d?.gemini?.baseUrl ? `\n  URL: ${d.gemini.baseUrl}` : '';
+      const gmCfg = d?.gemini?.configured ? 'true' : 'false';
+      const gmMask = d?.gemini?.apiKeyMasked ? `\n  Key: ${d.gemini.apiKeyMasked}` : '';
+      
+      const msg = `SelfCheck:\n- Sidecar: ${sidecarOk}${scBase}${scErr}\n- Gemini: ${geminiStatus}${gmBase}\n  Configured: ${gmCfg}${gmMask}${gmErr}\nModel: ${d?.gemini?.model || '--'}`;
+      addMsg('ai', msg);
+    })
+    .catch(e => addMsg('ai', 'SelfCheck error: ' + e.message));
+}
+
+// Chat Logic (NATURAL)
+function sendChat() {
+  const v = el('chatIn').value;
+  if(!v) return;
+  addMsg('user', v);
+  el('chatIn').value='';
+  setTyping(true);
+
+  const payload = {
+    caseId: state.caseId,
+    message: v,
+    model: state.model
+  };
+
+  if (state.aiBackground && state.aiBackgroundCase === state.caseId) {
+    payload.background = state.aiBackground;
+  }
+
+  fetch('/api/agent/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(!data || !data.ok) {
+      addMsg('ai', data?.error || 'AI chat failed.');
+      return;
+    }
+    addMsg('ai', data.reply || '(empty reply)');
+  })
+  .catch(err => addMsg('ai', 'AI chat error: ' + err.message))
+  .finally(() => setTyping(false));
+}
+
+// Structured consult (REPORT MODE)
+function runConsult() {
+  const v = el('chatIn').value;
+  if(!v) return;
+  addMsg('user', `[Consult] ${v}`);
+  el('chatIn').value='';
+  setTyping(true);
+
+  const payload = {
+    caseId: state.caseId,
+    question: v,
+    sliceZ: parseInt(el('slice').value),
+    model: state.model
+  };
+  if (state.aiBackground && state.aiBackgroundCase === state.caseId) {
+    payload.background = state.aiBackground;
+  }
+
+  fetch('/api/ai/consult', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(!data || !data.ok) {
+      addMsg('ai', data?.error || 'AI consult failed.');
+      return;
+    }
+
+    const ans = data.answer || {};
+    const parts = [];
+    if(ans.key_imaging_findings?.length) parts.push(`Findings:\n- ${ans.key_imaging_findings.join('\n- ')}`);
+    if(ans.differential?.length) {
+      const d = ans.differential.map(x => `- ${x.diagnosis} (${x.confidence || 'n/a'}): ${x.supporting || ''}`);
+      parts.push(`Differential:\n${d.join('\n')}`);
+    }
+    if(ans.recommended_next_steps?.length) {
+      const n = ans.recommended_next_steps.map(x => `- ${x.priority || ''} ${x.action || ''} ${x.rationale ? `(${x.rationale})` : ''}`.trim());
+      parts.push(`Next Steps:\n${n.join('\n')}`);
+    }
+    if(ans.red_flags?.length) parts.push(`Red Flags:\n- ${ans.red_flags.join('\n- ')}`);
+    if(ans.missing_info_questions?.length) parts.push(`Missing Info:\n- ${ans.missing_info_questions.join('\n- ')}`);
+    if(ans.limitations?.length) parts.push(`Limitations:\n- ${ans.limitations.join('\n- ')}`);
+
+    addMsg('ai', parts.length ? parts.join('\n\n') : (data.rawText || 'AI response received.'));
+  })
+  .catch(err => addMsg('ai', 'AI consult error: ' + err.message))
+  .finally(() => setTyping(false));
+}
+function addMsg(role, txt) {
+  if (role === 'ai' && txt && txt.trim() === WELCOME_MD.trim() && welcomeShown) return;
+  const d = document.createElement('div');
+  d.className = `msg ${role}`;
+  d.innerHTML = renderMarkdown(txt);
+  el('chat').appendChild(d);
+  const box = el('chat');
+  if (box) box.scrollTop = box.scrollHeight;
+  if (role === 'ai' && txt && txt.trim() === WELCOME_MD.trim()) welcomeShown = true;
+}
+
+function showWelcome() {
+  if (welcomeShown) return;
+  addMsg('ai', WELCOME_MD);
+}
+
+function setTyping(on) {
+  const chat = el('chat');
+  if (!chat) return;
+  let typing = el('typing');
+  if (on) {
+    if (!typing) {
+      typing = document.createElement('div');
+      typing.id = 'typing';
+      typing.className = 'typing';
+      typing.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+      chat.appendChild(typing);
+    }
+    chat.scrollTop = chat.scrollHeight;
+  } else if (typing) {
+    typing.remove();
+  }
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  const esc = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const lines = esc.split('\n');
+  let out = '';
+  let inList = false;
+  let inNumList = false;
+  const fmt = (s) => {
+    let r = s;
+    r = r.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    r = r.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    return r;
+  };
+  for (const line of lines) {
+    if (!line.trim()) {
+      if (inList) { out += '</ul>'; inList = false; }
+      if (inNumList) { out += '</ol>'; inNumList = false; }
+      out += '<p class="md-spacer"></p>';
+    } else if (/^###\s+/.test(line)) {
+      if (inList) { out += '</ul>'; inList = false; }
+      if (inNumList) { out += '</ol>'; inNumList = false; }
+      out += `<h4>${fmt(line.replace(/^###\s+/, ''))}</h4>`;
+    } else if (/^\d+\)\s+/.test(line)) {
+      if (inList) { out += '</ul>'; inList = false; }
+      if (!inNumList) { out += '<ol>'; inNumList = true; }
+      out += `<li>${fmt(line.replace(/^\d+\)\s+/, ''))}</li>`;
+    } else if (/^[-*]\s+/.test(line)) {
+      if (inNumList) { out += '</ol>'; inNumList = false; }
+      if (!inList) { out += '<ul>'; inList = true; }
+      out += `<li>${fmt(line.replace(/^[-*]\s+/, ''))}</li>`;
+    } else {
+      if (inList) { out += '</ul>'; inList = false; }
+      if (inNumList) { out += '</ol>'; inNumList = false; }
+      out += `<p>${fmt(line)}</p>`;
+    }
+  }
+  if (inList) out += '</ul>';
+  if (inNumList) out += '</ol>';
+  return out;
+}
+</script>
+</body>
+</html>

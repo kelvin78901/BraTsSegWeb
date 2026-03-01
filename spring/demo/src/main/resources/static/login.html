@@ -20,14 +20,14 @@
   --purple:#7c3aed;--purple2:#a855f7;
   --green:#34d399;--green-dim:rgba(52,211,153,.25);
   --amber:#f59e0b;
-  --bg:#020a14;--bg2:#04101e;
+  --bg:#010810;--bg2:#030d18;
   --text:#c8d6e5;--muted:#4a6178;--bright:#e8f0f8;
   --err:#f87171;--ok:#34d399;
   --mono:'JetBrains Mono','SF Mono','Fira Code',monospace;
   --sans:'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
 }
 
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans)}
+html,body{height:100%;overflow:hidden;background:#010810;color:var(--text);font-family:var(--sans)}
 
 /* ═══ LAYOUT: 70/30 asymmetric ═══ */
 #app{display:flex;height:100vh;width:100vw}
@@ -37,7 +37,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* ── Sidebar (right 30%) ── */
 #sidebar{
   width:clamp(340px,30vw,420px);flex-shrink:0;
-  background:rgba(2,10,20,.92);
+  background:rgba(1,8,16,.94);
   border-left:1px solid var(--cyan-dim);
   display:flex;flex-direction:column;
   padding:0;
@@ -277,13 +277,13 @@ const container=document.getElementById("scene");
 
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.setClearColor(0x020a14,1);
+renderer.setClearColor(0x010810,1);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.1;
+renderer.toneMappingExposure=1.2;
 container.insertBefore(renderer.domElement,container.firstChild);
 
 const scene=new THREE.Scene();
-scene.fog=new THREE.FogExp2(0x020a14,0.06);
+scene.fog=new THREE.FogExp2(0x010810,0.035);
 
 const camera=new THREE.PerspectiveCamera(38,1,0.1,500);
 camera.position.set(0,0.8,5.8);
@@ -470,24 +470,26 @@ function createCortexMesh(){
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  // Custom shader for gray cortex with sulci darkening + green scan highlight
+  // Custom shader: semi-transparent cortex that becomes nearly invisible where scan beam passes
   const mat=new THREE.ShaderMaterial({
     uniforms:{
       uTime:{value:0},
       uScanY:{value:-10},
-      uScanWidth:{value:0.15},
-      uBaseColor:{value:new THREE.Color(0.45,0.42,0.44)},  // gray cortex
-      uSulcusColor:{value:new THREE.Color(0.18,0.17,0.19)}, // dark sulci
-      uScanColor:{value:new THREE.Color(0.1,1.0,0.3)},      // green scan
-      uHighlightColor:{value:new THREE.Color(0.2,0.9,0.4)},
+      uScanWidth:{value:0.18},
+      uBaseColor:{value:new THREE.Color(0.50,0.47,0.52)},
+      uSulcusColor:{value:new THREE.Color(0.22,0.20,0.24)},
+      uScanColor:{value:new THREE.Color(0.1,1.0,0.3)},
+      uHighlightColor:{value:new THREE.Color(0.15,0.95,0.4)},
     },
     vertexShader:`
       varying vec3 vNormal;
       varying vec3 vPosition;
+      varying vec3 vLocalPos;
       varying vec2 vUv;
       void main(){
         vNormal=normalize(normalMatrix*normal);
         vPosition=(modelMatrix*vec4(position,1.0)).xyz;
+        vLocalPos=position;
         vUv=uv;
         gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
       }
@@ -502,56 +504,86 @@ function createCortexMesh(){
       uniform vec3 uHighlightColor;
       varying vec3 vNormal;
       varying vec3 vPosition;
+      varying vec3 vLocalPos;
       varying vec2 vUv;
 
+      // Simple hash for procedural detail
+      float hash21(vec2 p){
+        p=fract(p*vec2(234.34,435.345));
+        p+=dot(p,p+34.23);
+        return fract(p.x*p.y);
+      }
+
       void main(){
-        // Sulci depth from normal variation (concavities are darker)
+        // ── Curvature-based sulci ──
         float curvature=1.0-abs(dot(vNormal,vec3(0,1,0)));
-        float sulciFactor=smoothstep(0.3,0.8,curvature);
+        float sulciFactor=smoothstep(0.25,0.75,curvature);
 
-        // Base cortex color: mix gray and dark based on curvature
-        vec3 col=mix(uBaseColor,uSulcusColor,sulciFactor*0.6);
+        vec3 col=mix(uBaseColor,uSulcusColor,sulciFactor*0.65);
 
-        // Subtle warm/cool variation across surface
-        float warmCool=sin(vUv.x*12.0+vUv.y*8.0)*0.03;
+        // Warm/cool micro-variation
+        float warmCool=sin(vUv.x*14.0+vUv.y*10.0)*0.025;
         col+=vec3(warmCool,-warmCool*0.5,-warmCool);
 
-        // Lighting
-        vec3 lightDir=normalize(vec3(0.5,1.0,0.8));
-        float diff=max(dot(vNormal,lightDir),0.0)*0.6+0.4;
-        col*=diff;
+        // Procedural vein-like surface detail
+        float veinNoise=sin(vUv.x*60.0+sin(vUv.y*40.0)*2.0)*0.5+0.5;
+        veinNoise*=sin(vUv.y*45.0+sin(vUv.x*35.0)*1.5)*0.5+0.5;
+        col=mix(col,col*0.7,smoothstep(0.35,0.45,veinNoise)*0.15);
 
-        // Rim light (subtle blue edge glow)
+        // ── Lighting ──
+        vec3 lightDir=normalize(vec3(0.5,1.0,0.8));
+        vec3 lightDir2=normalize(vec3(-0.6,0.3,-0.5));
+        float diff=max(dot(vNormal,lightDir),0.0)*0.55+0.35;
+        float diff2=max(dot(vNormal,lightDir2),0.0)*0.15;
+        col*=(diff+diff2);
+
+        // Rim light (blue-cyan edge)
         vec3 viewDir=normalize(cameraPosition-vPosition);
         float rim=1.0-max(dot(viewDir,vNormal),0.0);
-        rim=pow(rim,3.0)*0.25;
-        col+=vec3(0.05,0.12,0.2)*rim;
+        float rimPow=pow(rim,2.5);
+        col+=vec3(0.04,0.15,0.25)*rimPow*0.6;
 
-        // ── GREEN SCAN BEAM EFFECT ──
+        // ── SCAN BEAM ──
         float scanDist=abs(vPosition.y-uScanY);
         float scanLine=smoothstep(uScanWidth,0.0,scanDist);
-        float scanEdge=smoothstep(uScanWidth*0.3,0.0,scanDist);
+        float scanEdge=smoothstep(uScanWidth*0.25,0.0,scanDist);
+        float scanNear=smoothstep(uScanWidth*2.0,0.0,scanDist);
 
-        // Scanned region turns green-tinted
-        float scanned=smoothstep(uScanY+uScanWidth,uScanY-uScanWidth*0.5,vPosition.y);
-        // Only color below scan line (already scanned)
-        float belowScan=step(vPosition.y,uScanY+uScanWidth*0.5);
+        // Green edge glow at scan line
+        col=mix(col,uScanColor*1.5,scanEdge*0.85);
+        col+=uScanColor*scanLine*0.5;
 
-        // Bright green line at scan edge
-        col=mix(col,uScanColor,scanEdge*0.9);
-        // Subtle green tint on scanned tissue
-        vec3 scannedCol=mix(col,uHighlightColor*0.5+col*0.5,0.3);
-        col=mix(col,scannedCol,belowScan*scanned*0.5);
+        // Scanned region: subtle green tint on tissue that was already scanned
+        float belowScan=smoothstep(uScanY+uScanWidth*0.5,uScanY-uScanWidth,vPosition.y);
+        vec3 scannedTint=mix(col,uHighlightColor*0.35+col*0.65,0.25);
+        col=mix(col,scannedTint,belowScan*0.4);
 
-        // Scan line glow
-        col+=uScanColor*scanLine*0.4;
+        // ── TRANSPARENCY ──
+        // Base: very transparent so internals show through
+        float baseAlpha=0.18+sulciFactor*0.08;
 
-        gl_FragColor=vec4(col,0.88);
+        // Rim edges slightly more visible (silhouette)
+        baseAlpha+=rimPow*0.2;
+
+        // Near scan beam: cortex becomes almost invisible to reveal internals
+        float scanFade=scanNear*0.7;
+        baseAlpha*=(1.0-scanFade);
+
+        // At exact scan line: thin bright green line stays visible
+        baseAlpha+=scanEdge*0.6;
+
+        // Below scan (already scanned): slightly more visible with green tint
+        baseAlpha+=belowScan*0.06;
+
+        // Clamp
+        baseAlpha=clamp(baseAlpha,0.03,0.75);
+
+        gl_FragColor=vec4(col,baseAlpha);
       }
     `,
     transparent:true,
     side:THREE.DoubleSide,
-    depthWrite:true,
+    depthWrite:false,
   });
 
   return new THREE.Mesh(geo,mat);
@@ -594,7 +626,7 @@ function createSulciLines(){
   geo.setIndex(indices);
 
   const mat=new THREE.LineBasicMaterial({
-    color:0x2a2830,transparent:true,opacity:0.25
+    color:0x3a3545,transparent:true,opacity:0.10
   });
   return new THREE.LineSegments(geo,mat);
 }
@@ -615,8 +647,8 @@ function createVasculature(){
     allCurves.push({curve,len:curve.getLength()});
     const tubePts=curve.getPoints(pts.length*8);
     const geo=new THREE.BufferGeometry().setFromPoints(tubePts);
-    const col=isMajor?0xcc2244:0x881830;
-    const op=isMajor?0.55:0.3;
+    const col=isMajor?0xff3355:0xcc2244;
+    const op=isMajor?0.75:0.45;
     const mat=new THREE.LineBasicMaterial({
       color:col,transparent:true,opacity:op,
       blending:THREE.AdditiveBlending
@@ -626,7 +658,7 @@ function createVasculature(){
     // Thicker glow line for major vessels
     if(isMajor){
       const mat2=new THREE.LineBasicMaterial({
-        color:0xff3355,transparent:true,opacity:0.12,
+        color:0xff4466,transparent:true,opacity:0.25,
         blending:THREE.AdditiveBlending,linewidth:1
       });
       group.add(new THREE.Line(geo.clone(),mat2));
@@ -780,8 +812,8 @@ function createVasculature(){
   pGeo.setAttribute("position",new THREE.BufferAttribute(pPositions,3));
   pGeo.setAttribute("color",new THREE.BufferAttribute(pColors,3));
   const pMat=new THREE.PointsMaterial({
-    size:0.015,sizeAttenuation:true,vertexColors:true,
-    transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false
+    size:0.022,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.95,blending:THREE.AdditiveBlending,depthWrite:false
   });
   const particles=new THREE.Points(pGeo,pMat);
   group.add(particles);
@@ -1004,6 +1036,170 @@ function createAnnotationOverlay(){
 }
 
 /* ═══════════════════════════════════════════
+   Procedural medical background environment
+   Neural network field + data grid + nebula
+   ═══════════════════════════════════════════ */
+function createBackground(){
+  const bgGroup=new THREE.Group();
+
+  // ── Deep space neural-network particle field ──
+  const fieldCount=6000;
+  const fPos=new Float32Array(fieldCount*3);
+  const fCol=new Float32Array(fieldCount*3);
+  for(let i=0;i<fieldCount;i++){
+    // Distribute in a large sphere around the brain
+    const theta=Math.random()*Math.PI*2;
+    const phi=Math.acos(2*Math.random()-1);
+    const r=3+Math.random()*12;
+    fPos[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    fPos[i*3+1]=r*Math.sin(phi)*Math.sin(theta);
+    fPos[i*3+2]=r*Math.cos(phi);
+    // Color palette: deep blue, teal, occasional purple
+    const type=Math.random();
+    if(type<0.5){
+      // Deep blue
+      fCol[i*3]=0.02+Math.random()*0.04;
+      fCol[i*3+1]=0.06+Math.random()*0.1;
+      fCol[i*3+2]=0.15+Math.random()*0.2;
+    }else if(type<0.8){
+      // Teal/cyan
+      fCol[i*3]=0.01+Math.random()*0.03;
+      fCol[i*3+1]=0.12+Math.random()*0.15;
+      fCol[i*3+2]=0.18+Math.random()*0.15;
+    }else{
+      // Purple accent
+      fCol[i*3]=0.1+Math.random()*0.12;
+      fCol[i*3+1]=0.03+Math.random()*0.05;
+      fCol[i*3+2]=0.15+Math.random()*0.2;
+    }
+  }
+  const fGeo=new THREE.BufferGeometry();
+  fGeo.setAttribute("position",new THREE.BufferAttribute(fPos,3));
+  fGeo.setAttribute("color",new THREE.BufferAttribute(fCol,3));
+  const fMat=new THREE.PointsMaterial({
+    size:0.04,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.6,blending:THREE.AdditiveBlending,depthWrite:false
+  });
+  bgGroup.add(new THREE.Points(fGeo,fMat));
+
+  // ── Neural connection lines (sparse network) ──
+  const connVerts=[];
+  const connColors=[];
+  const nodePositions=[];
+  for(let i=0;i<200;i++){
+    const theta=Math.random()*Math.PI*2;
+    const phi=Math.acos(2*Math.random()-1);
+    const r=4+Math.random()*6;
+    nodePositions.push(new THREE.Vector3(
+      r*Math.sin(phi)*Math.cos(theta),
+      r*Math.sin(phi)*Math.sin(theta),
+      r*Math.cos(phi)
+    ));
+  }
+  // Connect nearby nodes
+  for(let i=0;i<nodePositions.length;i++){
+    for(let j=i+1;j<nodePositions.length;j++){
+      const d=nodePositions[i].distanceTo(nodePositions[j]);
+      if(d<3.0&&Math.random()>0.6){
+        connVerts.push(
+          nodePositions[i].x,nodePositions[i].y,nodePositions[i].z,
+          nodePositions[j].x,nodePositions[j].y,nodePositions[j].z
+        );
+        const c=0.03+Math.random()*0.04;
+        connColors.push(c*0.5,c*1.2,c*2, c*0.5,c*1.2,c*2);
+      }
+    }
+  }
+  if(connVerts.length>0){
+    const cGeo=new THREE.BufferGeometry();
+    cGeo.setAttribute("position",new THREE.Float32BufferAttribute(connVerts,3));
+    cGeo.setAttribute("color",new THREE.Float32BufferAttribute(connColors,3));
+    const cMat=new THREE.LineBasicMaterial({
+      vertexColors:true,transparent:true,opacity:0.3,
+      blending:THREE.AdditiveBlending
+    });
+    bgGroup.add(new THREE.LineSegments(cGeo,cMat));
+  }
+
+  // ── Data grid rings (holographic medical display) ──
+  for(let ring=0;ring<3;ring++){
+    const r=5+ring*2.5;
+    const segments=64;
+    const ringVerts=[];
+    for(let i=0;i<=segments;i++){
+      const a=(i/segments)*Math.PI*2;
+      ringVerts.push(new THREE.Vector3(Math.cos(a)*r,-1.5+ring*0.3,Math.sin(a)*r));
+    }
+    const rGeo=new THREE.BufferGeometry().setFromPoints(ringVerts);
+    const rMat=new THREE.LineBasicMaterial({
+      color:ring===0?0x0a3355:ring===1?0x0a2244:0x081833,
+      transparent:true,opacity:0.2-ring*0.05,
+      blending:THREE.AdditiveBlending
+    });
+    bgGroup.add(new THREE.Line(rGeo,rMat));
+
+    // Radial spokes
+    for(let s=0;s<12;s++){
+      const a=(s/12)*Math.PI*2;
+      const spokeGeo=new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(Math.cos(a)*(r-0.5),-1.5+ring*0.3,Math.sin(a)*(r-0.5)),
+        new THREE.Vector3(Math.cos(a)*(r+0.5),-1.5+ring*0.3,Math.sin(a)*(r+0.5))
+      ]);
+      const sMat=new THREE.LineBasicMaterial({
+        color:0x0a2a44,transparent:true,opacity:0.1,
+        blending:THREE.AdditiveBlending
+      });
+      bgGroup.add(new THREE.Line(spokeGeo,sMat));
+    }
+  }
+
+  // ── Floating DNA-helix-like strands (medical motif) ──
+  for(let strand=0;strand<4;strand++){
+    const pts1=[],pts2=[];
+    const baseAngle=strand*Math.PI/2;
+    const dist=6+strand*1.5;
+    for(let t=0;t<40;t++){
+      const a=t*0.15+baseAngle;
+      const y=-3+t*0.15;
+      const helixR=0.3;
+      pts1.push(new THREE.Vector3(
+        Math.cos(a)*dist+Math.cos(a+t*0.3)*helixR,
+        y,
+        Math.sin(a)*dist+Math.sin(a+t*0.3)*helixR
+      ));
+      pts2.push(new THREE.Vector3(
+        Math.cos(a)*dist+Math.cos(a+t*0.3+Math.PI)*helixR,
+        y,
+        Math.sin(a)*dist+Math.sin(a+t*0.3+Math.PI)*helixR
+      ));
+    }
+    const curve1=new THREE.CatmullRomCurve3(pts1);
+    const curve2=new THREE.CatmullRomCurve3(pts2);
+    [curve1,curve2].forEach(c=>{
+      const g=new THREE.BufferGeometry().setFromPoints(c.getPoints(80));
+      const m=new THREE.LineBasicMaterial({
+        color:0x0d3366,transparent:true,opacity:0.15,
+        blending:THREE.AdditiveBlending
+      });
+      bgGroup.add(new THREE.Line(g,m));
+    });
+    // Cross-rungs
+    for(let t=0;t<40;t+=3){
+      const rungGeo=new THREE.BufferGeometry().setFromPoints([pts1[t],pts2[t]]);
+      const rungMat=new THREE.LineBasicMaterial({
+        color:0x0a4488,transparent:true,opacity:0.08,
+        blending:THREE.AdditiveBlending
+      });
+      bgGroup.add(new THREE.Line(rungGeo,rungMat));
+    }
+  }
+
+  bgGroup.userData.fGeo=fGeo;
+  bgGroup.userData.nodePositions=nodePositions;
+  return bgGroup;
+}
+
+/* ═══════════════════════════════════════════
    Assemble & Animate
    ═══════════════════════════════════════════ */
 const brainGroup=new THREE.Group();
@@ -1020,19 +1216,28 @@ brainGroup.add(sulciLines);
 brainGroup.add(vasculature);
 brainGroup.add(tumorSystem);
 
+const background=createBackground();
+scene.add(background);
 scene.add(brainGroup);
 scene.add(scanBeam);
 
-// Lighting
-const ambLight=new THREE.AmbientLight(0x1a2a3a,0.8);
+// Lighting — brighter to compensate for transparent cortex
+const ambLight=new THREE.AmbientLight(0x1a2a3a,1.0);
 scene.add(ambLight);
-const dirLight=new THREE.DirectionalLight(0xccddee,0.7);
+const dirLight=new THREE.DirectionalLight(0xccddee,0.8);
 dirLight.position.set(2,3,4);scene.add(dirLight);
-const dirLight2=new THREE.DirectionalLight(0x4488aa,0.3);
+const dirLight2=new THREE.DirectionalLight(0x4488aa,0.4);
 dirLight2.position.set(-3,1,-2);scene.add(dirLight2);
+// Subtle backlight to illuminate internal structures
+const backLight=new THREE.DirectionalLight(0x224466,0.3);
+backLight.position.set(0,-2,-3);scene.add(backLight);
 // Green-tinted point light that follows scan beam
-const scanLight=new THREE.PointLight(0x00ff44,0,3);
+const scanLight=new THREE.PointLight(0x00ff44,0,4);
 scene.add(scanLight);
+// Red point light to make vessels glow
+const vesselLight=new THREE.PointLight(0xff2244,0.4,3);
+vesselLight.position.set(0,-0.3,0);
+scene.add(vesselLight);
 
 /* ── Animation ── */
 let scanPhase=0;
@@ -1066,12 +1271,23 @@ function animate(){
 
   brainGroup.rotation.y=Math.sin(t*0.06)*0.1;
 
+  // Slowly rotate background
+  background.rotation.y=t*0.015;
+  background.rotation.x=Math.sin(t*0.05)*0.03;
+
+  // Animate background particles (gentle drift)
+  const bgPos=background.userData.fGeo.attributes.position.array;
+  for(let i=0;i<bgPos.length;i+=3){
+    bgPos[i+1]+=Math.sin(t*0.3+bgPos[i]*0.1)*0.001;
+  }
+  background.userData.fGeo.attributes.position.needsUpdate=true;
+
   // Scan beam
   scanPhase+=dt*0.3;
   const scanY=Math.sin(scanPhase)*0.9;
   scanBeam.position.y=scanY;
   scanLight.position.set(0,scanY,1.5);
-  scanLight.intensity=1.5+Math.sin(t*8)*0.3;
+  scanLight.intensity=2.5+Math.sin(t*8)*0.5;
 
   // Update cortex shader
   if(cortex.material.uniforms){
@@ -1083,8 +1299,37 @@ function animate(){
   const sliceIdx=Math.floor((scanY+0.9)/1.8*155);
   if(sliceEl)sliceEl.textContent=String(Math.max(1,Math.min(155,sliceIdx))).padStart(3,"0");
 
-  // Blood flow
+  // Blood flow + scan-beam vessel highlighting
   vasculature.userData.update(dt);
+
+  // Make vessel particles near scan beam glow brighter green
+  const vPos=vasculature.children[vasculature.children.length-1]; // particles
+  if(vPos&&vPos.isPoints){
+    const vpArr=vPos.geometry.attributes.position.array;
+    const vcArr=vPos.geometry.attributes.color.array;
+    const vCount=vpArr.length/3;
+    for(let i=0;i<vCount;i++){
+      const py=vpArr[i*3+1];
+      const dist=Math.abs(py-scanY);
+      if(dist<0.2){
+        const flash=1-dist/0.2;
+        // Flash green near scan
+        vcArr[i*3]=0.1+flash*0.2;
+        vcArr[i*3+1]=0.3+flash*0.7;
+        vcArr[i*3+2]=0.1+flash*0.3;
+      }else{
+        // Restore red
+        const bright=0.6+Math.random()*0.05;
+        vcArr[i*3]+=(bright-vcArr[i*3])*0.05;
+        vcArr[i*3+1]+=(0.08-vcArr[i*3+1])*0.05;
+        vcArr[i*3+2]+=(0.08-vcArr[i*3+2])*0.05;
+      }
+    }
+    vPos.geometry.attributes.color.needsUpdate=true;
+  }
+
+  // Move vessel light to follow scan
+  vesselLight.position.y=scanY;
 
   // Tumor reveal when scan passes through
   const tumorY=td.tumorCenter.y;

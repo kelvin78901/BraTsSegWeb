@@ -264,23 +264,29 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- Three.js CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- CSS2DRenderer for HTML labels in 3D -->
 <script>
 /* ═══════════════════════════════════════════════════════════════
-   SCANFIELD — 3D Brain Point-Cloud + Wireframe + Scan Beam
+   SCANFIELD v2 — Anatomically Accurate 3D Brain
+   Real cortical folds, flowing red vasculature, green scan beam,
+   tumor wireframe with English annotations
    ═══════════════════════════════════════════════════════════════ */
 (()=>{
 "use strict";
 const container=document.getElementById("scene");
 
-// ── Renderer ──
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setClearColor(0x020a14,1);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
 container.insertBefore(renderer.domElement,container.firstChild);
 
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(42,1,.1,500);
-camera.position.set(0,0,5.5);
+scene.fog=new THREE.FogExp2(0x020a14,0.06);
+
+const camera=new THREE.PerspectiveCamera(38,1,0.1,500);
+camera.position.set(0,0.8,5.8);
 
 const clock=new THREE.Clock();
 let W=1,H=1;
@@ -295,7 +301,6 @@ function resize(){
 window.addEventListener("resize",resize);
 resize();
 
-// ── Mouse tracking ──
 const mouse={x:0,y:0};
 container.addEventListener("mousemove",e=>{
   const r=container.getBoundingClientRect();
@@ -303,91 +308,260 @@ container.addEventListener("mousemove",e=>{
   mouse.y=-((e.clientY-r.top)/r.height)*2+1;
 });
 
-/* ─────────────────────────────────────────
-   Brain geometry generation (procedural)
-   ───────────────────────────────────────── */
+/* ═══════════════════════════════════════════
+   Seeded pseudo-random & Simplex-like noise
+   ═══════════════════════════════════════════ */
+function hash(x,y,z){
+  let h=x*374761393+y*668265263+z*1274126177;
+  h=(h^(h>>13))*1274126177;
+  return(h^(h>>16))/2147483648;
+}
+function noise3(x,y,z){
+  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z);
+  const fx=x-ix,fy=y-iy,fz=z-iz;
+  const sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy),sz=fz*fz*(3-2*fz);
+  const n000=hash(ix,iy,iz),n100=hash(ix+1,iy,iz);
+  const n010=hash(ix,iy+1,iz),n110=hash(ix+1,iy+1,iz);
+  const n001=hash(ix,iy,iz+1),n101=hash(ix+1,iy,iz+1);
+  const n011=hash(ix,iy+1,iz+1),n111=hash(ix+1,iy+1,iz+1);
+  return n000*(1-sx)*(1-sy)*(1-sz)+n100*sx*(1-sy)*(1-sz)+
+         n010*(1-sx)*sy*(1-sz)+n110*sx*sy*(1-sz)+
+         n001*(1-sx)*(1-sy)*sz+n101*sx*(1-sy)*sz+
+         n011*(1-sx)*sy*sz+n111*sx*sy*sz;
+}
+function fbm(x,y,z,oct){
+  let v=0,a=0.5,f=1;
+  for(let i=0;i<oct;i++){v+=a*noise3(x*f,y*f,z*f);a*=0.5;f*=2.1;}
+  return v;
+}
 
-// Parametric brain surface: two hemispheres with sulci detail
-function brainSurface(u,v,target){
-  // u,v in [0,1]
-  const theta=u*Math.PI*2;      // around
-  const phi=(v-0.5)*Math.PI;    // top to bottom
+/* ═══════════════════════════════════════════
+   Anatomically-accurate brain surface
+   Real proportions: ~17cm L, ~14cm W, ~13cm H
+   Scaled to unit ~1.7 x 1.4 x 1.3
+   ═══════════════════════════════════════════ */
+function brainSurface(u,v,target,time){
+  time=time||0;
+  const theta=u*Math.PI*2;
+  const phi=(v-0.5)*Math.PI;
+  const cp=Math.cos(phi),sp=Math.sin(phi);
+  const ct=Math.cos(theta),st=Math.sin(theta);
 
-  // Base ellipsoid
-  let rx=1.15,ry=1.35,rz=1.05;
-  let x=rx*Math.cos(phi)*Math.cos(theta);
-  let y=ry*Math.sin(phi);
-  let z=rz*Math.cos(phi)*Math.sin(theta);
+  // Anatomical base: anterior-posterior=1.7, lateral=1.4, superior-inferior=1.3
+  let rx=0.70;  // lateral (left-right)
+  let ry=0.65;  // superior-inferior
+  let rz=0.85;  // anterior-posterior
 
-  // Interhemispheric fissure (pinch along x near z=0)
-  const fissure=Math.exp(-z*z*8)*0.15;
-  x*=(1-fissure);
+  let x=rx*cp*ct;
+  let y=ry*sp;
+  let z=rz*cp*st;
 
-  // Frontal lobe bulge
-  const frontal=Math.exp(-(theta-Math.PI)*(theta-Math.PI)*2)*Math.cos(phi)*0.12;
-  z+=frontal;
+  // ── Longitudinal fissure (deep midline groove) ──
+  const midlineDist=Math.abs(x);
+  const fissureDepth=0.12*Math.exp(-midlineDist*midlineDist*80)*Math.max(0,cp);
+  y-=fissureDepth;
+  // Also pinch x toward midline
+  x*=(1-0.08*Math.exp(-midlineDist*midlineDist*60)*Math.max(0,cp));
 
-  // Occipital flatten
-  const occ=Math.exp(-(theta)*(theta)*3)*0.08;
-  z-=occ;
+  // ── Frontal lobe: broader, more convex anteriorly ──
+  const frontalFactor=Math.max(0,st)*cp; // positive z = anterior
+  x*=(1+0.12*frontalFactor);
+  z+=0.06*frontalFactor*frontalFactor;
 
-  // Sulci (cortical folds) — multiple frequency noise
-  const s1=Math.sin(theta*8+phi*6)*0.025;
-  const s2=Math.sin(theta*14-phi*10)*0.015;
-  const s3=Math.cos(theta*22+phi*18)*0.008;
-  const sulci=(s1+s2+s3);
-  x+=x*sulci;y+=y*sulci;z+=z*sulci;
+  // ── Temporal lobes: lateral bulges below the Sylvian fissure ──
+  const temporal=Math.max(0,-sp-0.1)*Math.abs(ct)*cp;
+  x*=(1+0.25*temporal);
+  y-=0.04*temporal;
+
+  // ── Sylvian fissure (lateral sulcus) ──
+  const sylvianAngle=Math.atan2(-sp,Math.abs(ct)*cp);
+  const sylvian=Math.exp(-Math.pow(sylvianAngle+0.3,2)*25)*0.04*Math.abs(ct);
+  x-=Math.sign(x)*sylvian;
+
+  // ── Occipital lobe: slightly narrower, more pointed ──
+  const occipital=Math.max(0,-st)*cp;
+  x*=(1-0.08*occipital);
+  z-=0.04*occipital*occipital;
+
+  // ── Central sulcus (Rolandic fissure) — runs laterally near top ──
+  const centralSulcusU=0.42; // position along theta
+  const centralDist=Math.abs(u-centralSulcusU);
+  const centralGroove=Math.exp(-centralDist*centralDist*800)*0.025*Math.max(0,sp+0.2);
+  y-=centralGroove;
+
+  // ── Precentral & postcentral gyri (motor/sensory strips) ──
+  const precentral=Math.sin((u-centralSulcusU+0.03)*120)*0.008*Math.max(0,sp);
+  const postcentral=Math.sin((u-centralSulcusU-0.03)*120)*0.008*Math.max(0,sp);
+  y+=precentral+postcentral;
+
+  // ── Inferior frontal gyrus (Broca's area bump, left hemisphere) ──
+  if(x<0){
+    const broca=Math.exp(-Math.pow(theta-2.8,2)*15-Math.pow(phi+0.3,2)*10)*0.02;
+    x-=broca;
+  }
+
+  // ── Cerebellum hint (inferior-posterior bulge) ──
+  const cerebellar=Math.max(0,-sp-0.5)*Math.max(0,-st)*0.15;
+  z-=cerebellar*0.5;
+  y-=cerebellar*0.3;
+  x*=(1+cerebellar*0.4);
+
+  // ── Brain stem hint (inferior midline) ──
+  const stemFactor=Math.max(0,-sp-0.7)*(1-Math.abs(ct))*Math.max(0,-st+0.3);
+  y-=stemFactor*0.15;
+  z-=stemFactor*0.08;
+
+  // ── Multi-scale cortical folding (sulci & gyri) ──
+  // Primary folds (major sulci)
+  const fold1=Math.sin(theta*6+phi*4)*0.018;
+  const fold2=Math.sin(theta*10-phi*8+1.3)*0.012;
+  // Secondary folds
+  const fold3=Math.sin(theta*16+phi*14-0.7)*0.007;
+  const fold4=Math.cos(theta*22-phi*18+2.1)*0.005;
+  // Tertiary micro-folds using noise
+  const nval=fbm(theta*2.5,phi*2.5,0.5,4)*0.02-0.01;
+
+  const foldTotal=(fold1+fold2+fold3+fold4+nval)*Math.max(0.3,cp);
+  const nx=x/rx,ny=y/ry,nz=z/rz;
+  const len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+  x+=nx/len*foldTotal;
+  y+=ny/len*foldTotal;
+  z+=nz/len*foldTotal;
 
   target.set(x,y,z);
 }
 
-// Generate brain point cloud
-function createBrainPoints(){
-  const N=28000;
-  const positions=new Float32Array(N*3);
-  const colors=new Float32Array(N*3);
-  const sizes=new Float32Array(N);
+/* ═══════════════════════════════════════════
+   Cortex surface — gray tissue mesh
+   ═══════════════════════════════════════════ */
+function createCortexMesh(){
+  const uSegs=120,vSegs=80;
+  const positions=[];
+  const normals=[];
+  const uvs=[];
+  const indices=[];
   const v3=new THREE.Vector3();
+  const vA=new THREE.Vector3(),vB=new THREE.Vector3(),vC=new THREE.Vector3();
 
-  for(let i=0;i<N;i++){
-    const u=Math.random();
-    const v=Math.random();
-    brainSurface(u,v,v3);
-
-    // Some points on surface, some scattered inside (tissue)
-    const depth=0.7+Math.random()*0.3;
-    positions[i*3]=v3.x*depth;
-    positions[i*3+1]=v3.y*depth;
-    positions[i*3+2]=v3.z*depth;
-
-    // Color: outer=cyan, inner=purple, deep=dark blue
-    const d=depth;
-    if(d>0.92){
-      colors[i*3]=0.02;colors[i*3+1]=0.55+Math.random()*0.2;colors[i*3+2]=0.7+Math.random()*0.15;
-    }else if(d>0.82){
-      colors[i*3]=0.35+Math.random()*0.15;colors[i*3+1]=0.18;colors[i*3+2]=0.6+Math.random()*0.2;
-    }else{
-      colors[i*3]=0.05;colors[i*3+1]=0.08;colors[i*3+2]=0.2+Math.random()*0.1;
+  for(let i=0;i<=uSegs;i++){
+    for(let j=0;j<=vSegs;j++){
+      brainSurface(i/uSegs,j/vSegs,v3);
+      positions.push(v3.x,v3.y,v3.z);
+      uvs.push(i/uSegs,j/vSegs);
+      // Placeholder normal
+      normals.push(0,0,0);
     }
-    sizes[i]=0.008+Math.random()*0.012*(d>0.9?1.5:0.6);
+  }
+
+  for(let i=0;i<uSegs;i++){
+    for(let j=0;j<vSegs;j++){
+      const a=i*(vSegs+1)+j;
+      const b=a+1;
+      const c=(i+1)*(vSegs+1)+j;
+      const d=c+1;
+      indices.push(a,b,d, a,d,c);
+    }
   }
 
   const geo=new THREE.BufferGeometry();
-  geo.setAttribute("position",new THREE.BufferAttribute(positions,3));
-  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
-  geo.setAttribute("size",new THREE.BufferAttribute(sizes,1));
+  geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute("normal",new THREE.Float32BufferAttribute(normals,3));
+  geo.setAttribute("uv",new THREE.Float32BufferAttribute(uvs,2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
 
-  const mat=new THREE.PointsMaterial({
-    size:0.018,sizeAttenuation:true,vertexColors:true,
-    transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,depthWrite:false
+  // Custom shader for gray cortex with sulci darkening + green scan highlight
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{
+      uTime:{value:0},
+      uScanY:{value:-10},
+      uScanWidth:{value:0.15},
+      uBaseColor:{value:new THREE.Color(0.45,0.42,0.44)},  // gray cortex
+      uSulcusColor:{value:new THREE.Color(0.18,0.17,0.19)}, // dark sulci
+      uScanColor:{value:new THREE.Color(0.1,1.0,0.3)},      // green scan
+      uHighlightColor:{value:new THREE.Color(0.2,0.9,0.4)},
+    },
+    vertexShader:`
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying vec2 vUv;
+      void main(){
+        vNormal=normalize(normalMatrix*normal);
+        vPosition=(modelMatrix*vec4(position,1.0)).xyz;
+        vUv=uv;
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+      }
+    `,
+    fragmentShader:`
+      uniform float uTime;
+      uniform float uScanY;
+      uniform float uScanWidth;
+      uniform vec3 uBaseColor;
+      uniform vec3 uSulcusColor;
+      uniform vec3 uScanColor;
+      uniform vec3 uHighlightColor;
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying vec2 vUv;
+
+      void main(){
+        // Sulci depth from normal variation (concavities are darker)
+        float curvature=1.0-abs(dot(vNormal,vec3(0,1,0)));
+        float sulciFactor=smoothstep(0.3,0.8,curvature);
+
+        // Base cortex color: mix gray and dark based on curvature
+        vec3 col=mix(uBaseColor,uSulcusColor,sulciFactor*0.6);
+
+        // Subtle warm/cool variation across surface
+        float warmCool=sin(vUv.x*12.0+vUv.y*8.0)*0.03;
+        col+=vec3(warmCool,-warmCool*0.5,-warmCool);
+
+        // Lighting
+        vec3 lightDir=normalize(vec3(0.5,1.0,0.8));
+        float diff=max(dot(vNormal,lightDir),0.0)*0.6+0.4;
+        col*=diff;
+
+        // Rim light (subtle blue edge glow)
+        vec3 viewDir=normalize(cameraPosition-vPosition);
+        float rim=1.0-max(dot(viewDir,vNormal),0.0);
+        rim=pow(rim,3.0)*0.25;
+        col+=vec3(0.05,0.12,0.2)*rim;
+
+        // ── GREEN SCAN BEAM EFFECT ──
+        float scanDist=abs(vPosition.y-uScanY);
+        float scanLine=smoothstep(uScanWidth,0.0,scanDist);
+        float scanEdge=smoothstep(uScanWidth*0.3,0.0,scanDist);
+
+        // Scanned region turns green-tinted
+        float scanned=smoothstep(uScanY+uScanWidth,uScanY-uScanWidth*0.5,vPosition.y);
+        // Only color below scan line (already scanned)
+        float belowScan=step(vPosition.y,uScanY+uScanWidth*0.5);
+
+        // Bright green line at scan edge
+        col=mix(col,uScanColor,scanEdge*0.9);
+        // Subtle green tint on scanned tissue
+        vec3 scannedCol=mix(col,uHighlightColor*0.5+col*0.5,0.3);
+        col=mix(col,scannedCol,belowScan*scanned*0.5);
+
+        // Scan line glow
+        col+=uScanColor*scanLine*0.4;
+
+        gl_FragColor=vec4(col,0.88);
+      }
+    `,
+    transparent:true,
+    side:THREE.DoubleSide,
+    depthWrite:true,
   });
-  return new THREE.Points(geo,mat);
+
+  return new THREE.Mesh(geo,mat);
 }
 
-// Brain wireframe (cortex outline)
-function createBrainWireframe(){
-  const uSegs=80,vSegs=50;
-  const geo=new THREE.BufferGeometry();
+/* ═══════════════════════════════════════════
+   Cortex wireframe overlay (sulci lines)
+   ═══════════════════════════════════════════ */
+function createSulciLines(){
+  const uSegs=120,vSegs=80;
   const verts=[];
   const v3=new THREE.Vector3();
 
@@ -399,280 +573,575 @@ function createBrainWireframe(){
   }
 
   const indices=[];
-  for(let i=0;i<uSegs;i++){
+  // Only draw lines along sulci-like paths (every few segments)
+  for(let i=0;i<uSegs;i+=3){
     for(let j=0;j<vSegs;j++){
       const a=i*(vSegs+1)+j;
       const b=a+1;
+      indices.push(a,b);
+    }
+  }
+  for(let j=0;j<vSegs;j+=3){
+    for(let i=0;i<uSegs;i++){
+      const a=i*(vSegs+1)+j;
       const c=(i+1)*(vSegs+1)+j;
-      const d=c+1;
-      indices.push(a,b,a,c);
-      if(i===uSegs-1)indices.push(c,d);
-      if(j===vSegs-1)indices.push(b,d);
+      indices.push(a,c);
     }
   }
 
+  const geo=new THREE.BufferGeometry();
   geo.setAttribute("position",new THREE.Float32BufferAttribute(verts,3));
   geo.setIndex(indices);
 
   const mat=new THREE.LineBasicMaterial({
-    color:0x1a3a5c,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending
+    color:0x2a2830,transparent:true,opacity:0.25
   });
   return new THREE.LineSegments(geo,mat);
 }
 
-// Vasculature (blood vessel network)
+/* ═══════════════════════════════════════════
+   Anatomical vasculature — Circle of Willis +
+   ACA, MCA, PCA with realistic branching
+   Red flowing particles along vessels
+   ═══════════════════════════════════════════ */
 function createVasculature(){
   const group=new THREE.Group();
-  const vesselCount=45;
+  const allCurves=[];
 
-  for(let v=0;v<vesselCount;v++){
-    const pts=[];
-    const v3=new THREE.Vector3();
-    const startU=Math.random(),startV=Math.random();
-    brainSurface(startU,startV,v3);
-    let cx=v3.x*0.85,cy=v3.y*0.85,cz=v3.z*0.85;
-
-    const segs=15+Math.floor(Math.random()*25);
-    for(let s=0;s<segs;s++){
-      pts.push(new THREE.Vector3(cx,cy,cz));
-      const drift=0.06;
-      cx+=((Math.random()-.5)*drift);
-      cy+=((Math.random()-.5)*drift);
-      cz+=((Math.random()-.5)*drift);
-      // Keep inside brain volume
-      const len=Math.sqrt(cx*cx+cy*cy/(1.35*1.35)+cz*cz/(1.05*1.05));
-      if(len>0.9){cx*=0.9/len;cy*=0.9/len;cz*=0.9/len;}
-    }
-
-    if(pts.length<2)continue;
+  // Helper: create a vessel from control points
+  function addVessel(pts,radius,isMajor){
+    if(pts.length<2)return;
     const curve=new THREE.CatmullRomCurve3(pts);
-    const geo=new THREE.BufferGeometry().setFromPoints(curve.getPoints(segs*3));
-    const isMajor=v<8;
+    allCurves.push({curve,len:curve.getLength()});
+    const tubePts=curve.getPoints(pts.length*8);
+    const geo=new THREE.BufferGeometry().setFromPoints(tubePts);
+    const col=isMajor?0xcc2244:0x881830;
+    const op=isMajor?0.55:0.3;
     const mat=new THREE.LineBasicMaterial({
-      color:isMajor?0x8b2040:0x4a1828,
-      transparent:true,opacity:isMajor?0.35:0.15,
+      color:col,transparent:true,opacity:op,
       blending:THREE.AdditiveBlending
     });
     group.add(new THREE.Line(geo,mat));
 
-    // Branch
-    if(Math.random()>0.5){
-      const brPts=[];
-      const bi=Math.floor(pts.length*0.4+Math.random()*pts.length*0.4);
-      let bx=pts[bi].x,by=pts[bi].y,bz=pts[bi].z;
-      const bSegs=6+Math.floor(Math.random()*10);
-      for(let s=0;s<bSegs;s++){
-        brPts.push(new THREE.Vector3(bx,by,bz));
-        bx+=(Math.random()-.5)*0.04;
-        by+=(Math.random()-.5)*0.04;
-        bz+=(Math.random()-.5)*0.04;
-      }
-      if(brPts.length>=2){
-        const bc=new THREE.CatmullRomCurve3(brPts);
-        const bg=new THREE.BufferGeometry().setFromPoints(bc.getPoints(bSegs*2));
-        const bm=new THREE.LineBasicMaterial({color:0x5a1530,transparent:true,opacity:0.12,blending:THREE.AdditiveBlending});
-        group.add(new THREE.Line(bg,bm));
-      }
+    // Thicker glow line for major vessels
+    if(isMajor){
+      const mat2=new THREE.LineBasicMaterial({
+        color:0xff3355,transparent:true,opacity:0.12,
+        blending:THREE.AdditiveBlending,linewidth:1
+      });
+      group.add(new THREE.Line(geo.clone(),mat2));
     }
   }
+
+  // Helper: branch from a point with random walk inside brain
+  function branchFrom(origin,dir,length,segs,isMajor){
+    const pts=[origin.clone()];
+    let cx=origin.x,cy=origin.y,cz=origin.z;
+    let dx=dir.x,dy=dir.y,dz=dir.z;
+    const step=length/segs;
+    for(let s=0;s<segs;s++){
+      // Drift direction with some randomness
+      dx+=(Math.random()-0.5)*0.3;
+      dy+=(Math.random()-0.5)*0.2;
+      dz+=(Math.random()-0.5)*0.3;
+      const dl=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;
+      dx/=dl;dy/=dl;dz/=dl;
+      cx+=dx*step;cy+=dy*step;cz+=dz*step;
+      // Constrain inside brain volume
+      const bv=new THREE.Vector3();
+      brainSurface(Math.atan2(cz,cx)/(Math.PI*2)+0.5,
+                    Math.asin(Math.max(-1,Math.min(1,cy/0.65)))/Math.PI+0.5,bv);
+      const maxR=Math.sqrt(bv.x*bv.x+bv.y*bv.y+bv.z*bv.z)*0.88;
+      const curR=Math.sqrt(cx*cx+cy*cy+cz*cz);
+      if(curR>maxR){const s2=maxR/curR;cx*=s2;cy*=s2;cz*=s2;}
+      pts.push(new THREE.Vector3(cx,cy,cz));
+    }
+    addVessel(pts,isMajor?0.008:0.004,isMajor);
+    return pts;
+  }
+
+  // ── Circle of Willis (base of brain) ──
+  const willisY=-0.35;
+  const willisR=0.15;
+  const willisPts=[];
+  for(let a=0;a<=Math.PI*2;a+=Math.PI/16){
+    willisPts.push(new THREE.Vector3(
+      Math.cos(a)*willisR,
+      willisY+Math.sin(a*3)*0.01,
+      Math.sin(a)*willisR*0.8
+    ));
+  }
+  willisPts.push(willisPts[0].clone());
+  addVessel(willisPts,0.01,true);
+
+  // ── Internal Carotid Arteries (ICA) — ascending from neck ──
+  for(let side of[-1,1]){
+    const ica=[];
+    for(let t=0;t<8;t++){
+      ica.push(new THREE.Vector3(
+        side*0.08+Math.sin(t*0.3)*0.02,
+        -0.65+t*0.04,
+        -0.05+Math.cos(t*0.5)*0.02
+      ));
+    }
+    addVessel(ica,0.008,true);
+  }
+
+  // ── Anterior Cerebral Arteries (ACA) — run along midline superiorly ──
+  for(let side of[-1,1]){
+    const start=new THREE.Vector3(side*0.05,willisY,willisR*0.7);
+    branchFrom(start,new THREE.Vector3(side*0.02,1,0.3),0.9,18,true);
+    // Sub-branches
+    for(let b=0;b<4;b++){
+      const bStart=new THREE.Vector3(
+        side*(0.03+b*0.02),willisY+0.15+b*0.15,willisR*0.5+b*0.08
+      );
+      branchFrom(bStart,new THREE.Vector3(side*0.5,0.3,0.2),0.3+Math.random()*0.2,8,false);
+    }
+  }
+
+  // ── Middle Cerebral Arteries (MCA) — lateral, largest territory ──
+  for(let side of[-1,1]){
+    const start=new THREE.Vector3(side*willisR,willisY,0);
+    const mainPts=branchFrom(start,new THREE.Vector3(side*1,0.4,0.1),0.8,16,true);
+    // MCA has many branches (supplies most of lateral cortex)
+    for(let b=0;b<8;b++){
+      const idx=Math.min(mainPts.length-1,3+b*2);
+      const bStart=mainPts[idx].clone();
+      const dir=new THREE.Vector3(
+        side*(0.5+Math.random()*0.5),
+        0.3+Math.random()*0.5,
+        (Math.random()-0.5)*0.6
+      );
+      branchFrom(bStart,dir,0.25+Math.random()*0.3,6+Math.floor(Math.random()*6),false);
+    }
+  }
+
+  // ── Posterior Cerebral Arteries (PCA) — occipital supply ──
+  for(let side of[-1,1]){
+    const start=new THREE.Vector3(side*0.08,willisY,-willisR*0.6);
+    const mainPts=branchFrom(start,new THREE.Vector3(side*0.3,0.2,-1),0.7,14,true);
+    for(let b=0;b<4;b++){
+      const idx=Math.min(mainPts.length-1,2+b*3);
+      branchFrom(mainPts[idx].clone(),
+        new THREE.Vector3(side*0.4,0.4,-0.5),0.2+Math.random()*0.2,6,false);
+    }
+  }
+
+  // ── Basilar artery (posterior, midline) ──
+  const basilar=[];
+  for(let t=0;t<10;t++){
+    basilar.push(new THREE.Vector3(
+      Math.sin(t*0.2)*0.01,
+      -0.65+t*0.03,
+      -0.2-t*0.01
+    ));
+  }
+  addVessel(basilar,0.008,true);
+
+  // ── Vertebral arteries ──
+  for(let side of[-1,1]){
+    const vert=[];
+    for(let t=0;t<8;t++){
+      vert.push(new THREE.Vector3(
+        side*0.06+Math.sin(t*0.4)*0.015,
+        -0.75+t*0.02,
+        -0.25+Math.cos(t*0.3)*0.02
+      ));
+    }
+    addVessel(vert,0.006,true);
+  }
+
+  // ── Blood flow particles ──
+  const particleCount=3000;
+  const pPositions=new Float32Array(particleCount*3);
+  const pColors=new Float32Array(particleCount*3);
+  const pSizes=new Float32Array(particleCount);
+  // Store which curve each particle belongs to and its t parameter
+  const particleData=[];
+
+  for(let i=0;i<particleCount;i++){
+    const ci=Math.floor(Math.random()*allCurves.length);
+    const t=Math.random();
+    const pt=allCurves[ci].curve.getPoint(t);
+    pPositions[i*3]=pt.x;
+    pPositions[i*3+1]=pt.y;
+    pPositions[i*3+2]=pt.z;
+    // Red with variation
+    const bright=0.6+Math.random()*0.4;
+    pColors[i*3]=bright;
+    pColors[i*3+1]=0.05+Math.random()*0.1;
+    pColors[i*3+2]=0.08+Math.random()*0.08;
+    pSizes[i]=0.008+Math.random()*0.015;
+    particleData.push({ci,t,speed:0.02+Math.random()*0.04});
+  }
+
+  const pGeo=new THREE.BufferGeometry();
+  pGeo.setAttribute("position",new THREE.BufferAttribute(pPositions,3));
+  pGeo.setAttribute("color",new THREE.BufferAttribute(pColors,3));
+  const pMat=new THREE.PointsMaterial({
+    size:0.015,sizeAttenuation:true,vertexColors:true,
+    transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false
+  });
+  const particles=new THREE.Points(pGeo,pMat);
+  group.add(particles);
+
+  // Update function for flowing blood
+  group.userData.update=function(dt){
+    const pos=pGeo.attributes.position.array;
+    for(let i=0;i<particleCount;i++){
+      const pd=particleData[i];
+      pd.t+=pd.speed*dt;
+      if(pd.t>1){pd.t-=1;pd.ci=Math.floor(Math.random()*allCurves.length);}
+      const pt=allCurves[pd.ci].curve.getPoint(pd.t);
+      pos[i*3]=pt.x;pos[i*3+1]=pt.y;pos[i*3+2]=pt.z;
+    }
+    pGeo.attributes.position.needsUpdate=true;
+  };
+
+  group.userData.allCurves=allCurves;
   return group;
 }
 
-// Tumor mass (point cloud, right hemisphere)
-function createTumor(){
-  const N=4000;
-  const positions=new Float32Array(N*3);
-  const colors=new Float32Array(N*3);
-  // Tumor center in right hemisphere
-  const tcx=0.45,tcy=0.15,tcz=0.1;
-  const regions=[
-    {r:0.32,cr:0.32,cg:0.84,cb:1.0,n:1800},   // WT - cyan
-    {r:0.18,cr:0.66,cg:0.33,cb:0.92,n:1200},   // TC - purple
-    {r:0.10,cr:0.20,cg:0.83,cb:0.60,n:1000}    // ET - green
-  ];
-  let idx=0;
-  regions.forEach(reg=>{
-    for(let i=0;i<reg.n&&idx<N;i++,idx++){
-      const theta=Math.random()*Math.PI*2;
-      const phi=Math.acos(2*Math.random()-1);
-      const r=reg.r*Math.pow(Math.random(),0.33);
-      // Irregular shape
-      const noise=1+Math.sin(theta*5)*0.15+Math.cos(phi*7)*0.1;
-      positions[idx*3]=tcx+r*noise*Math.sin(phi)*Math.cos(theta);
-      positions[idx*3+1]=tcy+r*noise*Math.sin(phi)*Math.sin(theta);
-      positions[idx*3+2]=tcz+r*noise*Math.cos(phi);
-      const jitter=0.15;
-      colors[idx*3]=reg.cr+Math.random()*jitter;
-      colors[idx*3+1]=reg.cg+Math.random()*jitter;
-      colors[idx*3+2]=reg.cb+Math.random()*jitter;
-    }
-  });
+/* ═══════════════════════════════════════════
+   Tumor with wireframe boundary + labels
+   Located in right temporal-parietal region
+   ═══════════════════════════════════════════ */
+function createTumorSystem(){
+  const group=new THREE.Group();
+  const tumorCenter=new THREE.Vector3(0.38,0.08,0.12);
 
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute("position",new THREE.BufferAttribute(positions,3));
-  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
+  // ── Whole Tumor (WT) — irregular mass ──
+  const wtGeo=new THREE.IcosahedronGeometry(0.28,3);
+  const wtPos=wtGeo.attributes.position;
+  for(let i=0;i<wtPos.count;i++){
+    const x=wtPos.getX(i),y=wtPos.getY(i),z=wtPos.getZ(i);
+    const n=fbm(x*3+1.7,y*3+0.3,z*3+2.1,4);
+    const scale=1+n*0.5-0.15;
+    wtPos.setXYZ(i,x*scale*1.1,y*scale*0.85,z*scale);
+  }
+  wtGeo.computeVertexNormals();
 
-  const mat=new THREE.PointsMaterial({
-    size:0.022,sizeAttenuation:true,vertexColors:true,
+  // WT wireframe
+  const wtEdges=new THREE.EdgesGeometry(wtGeo,12);
+  const wtWire=new THREE.LineSegments(wtEdges,new THREE.LineBasicMaterial({
+    color:0x22d3ee,transparent:true,opacity:0.0
+  }));
+  wtWire.position.copy(tumorCenter);
+  group.add(wtWire);
+
+  // ── Tumor Core (TC) ──
+  const tcGeo=new THREE.IcosahedronGeometry(0.16,3);
+  const tcPos=tcGeo.attributes.position;
+  for(let i=0;i<tcPos.count;i++){
+    const x=tcPos.getX(i),y=tcPos.getY(i),z=tcPos.getZ(i);
+    const n=fbm(x*4+3.1,y*4+1.7,z*4+0.9,3);
+    const scale=1+n*0.4-0.1;
+    tcPos.setXYZ(i,x*scale,y*scale*0.9,z*scale*1.05);
+  }
+  tcGeo.computeVertexNormals();
+
+  const tcEdges=new THREE.EdgesGeometry(tcGeo,15);
+  const tcWire=new THREE.LineSegments(tcEdges,new THREE.LineBasicMaterial({
+    color:0xa855f7,transparent:true,opacity:0.0
+  }));
+  tcWire.position.copy(tumorCenter);
+  group.add(tcWire);
+
+  // ── Enhancing Tumor (ET) — innermost ──
+  const etGeo=new THREE.IcosahedronGeometry(0.09,2);
+  const etPos=etGeo.attributes.position;
+  for(let i=0;i<etPos.count;i++){
+    const x=etPos.getX(i),y=etPos.getY(i),z=etPos.getZ(i);
+    const n=fbm(x*5+0.3,y*5+2.8,z*5+1.4,3);
+    const scale=1+n*0.35;
+    etPos.setXYZ(i,x*scale,y*scale,z*scale);
+  }
+  etGeo.computeVertexNormals();
+
+  const etEdges=new THREE.EdgesGeometry(etGeo,18);
+  const etWire=new THREE.LineSegments(etEdges,new THREE.LineBasicMaterial({
+    color:0x34d399,transparent:true,opacity:0.0
+  }));
+  etWire.position.copy(tumorCenter);
+  group.add(etWire);
+
+  // ── Necrotic core point cloud ──
+  const necN=800;
+  const necPos=new Float32Array(necN*3);
+  const necCol=new Float32Array(necN*3);
+  for(let i=0;i<necN;i++){
+    const th=Math.random()*Math.PI*2;
+    const ph=Math.acos(2*Math.random()-1);
+    const r=0.07*Math.pow(Math.random(),0.4);
+    necPos[i*3]=tumorCenter.x+r*Math.sin(ph)*Math.cos(th);
+    necPos[i*3+1]=tumorCenter.y+r*Math.sin(ph)*Math.sin(th);
+    necPos[i*3+2]=tumorCenter.z+r*Math.cos(ph);
+    necCol[i*3]=0.35+Math.random()*0.15;
+    necCol[i*3+1]=0.15+Math.random()*0.1;
+    necCol[i*3+2]=0.05;
+  }
+  const necGeo=new THREE.BufferGeometry();
+  necGeo.setAttribute("position",new THREE.BufferAttribute(necPos,3));
+  necGeo.setAttribute("color",new THREE.BufferAttribute(necCol,3));
+  const necMat=new THREE.PointsMaterial({
+    size:0.012,sizeAttenuation:true,vertexColors:true,
     transparent:true,opacity:0.0,blending:THREE.AdditiveBlending,depthWrite:false
   });
-  return new THREE.Points(geo,mat);
-}
+  const necCloud=new THREE.Points(necGeo,necMat);
+  group.add(necCloud);
 
-// Tumor bounding wireframe box
-function createTumorBounds(){
-  const geo=new THREE.BoxGeometry(0.7,0.55,0.5);
-  const edges=new THREE.EdgesGeometry(geo);
-  const mat=new THREE.LineBasicMaterial({color:0x06b6d4,transparent:true,opacity:0.0});
-  const box=new THREE.LineSegments(edges,mat);
-  box.position.set(0.45,0.15,0.1);
-  return box;
-}
+  // ── Annotation leader lines + labels (HTML overlay) ──
+  // We'll create these as simple line segments pointing outward
+  const annotations=[
+    {label:"Whole Tumor (WT)",color:0x22d3ee,offset:new THREE.Vector3(0.45,0.25,0.3)},
+    {label:"Tumor Core (TC)",color:0xa855f7,offset:new THREE.Vector3(0.4,-0.2,0.25)},
+    {label:"Enhancing (ET)",color:0x34d399,offset:new THREE.Vector3(-0.3,0.3,0.35)},
+    {label:"Necrotic Core",color:0xf59e0b,offset:new THREE.Vector3(-0.35,-0.15,0.3)},
+  ];
 
-// Scan beam (horizontal plane)
-function createScanBeam(){
-  const geo=new THREE.PlaneGeometry(6,0.015);
-  const mat=new THREE.MeshBasicMaterial({
-    color:0x06b6d4,transparent:true,opacity:0.6,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  const leaderGroup=new THREE.Group();
+  annotations.forEach(ann=>{
+    const start=tumorCenter.clone();
+    const end=tumorCenter.clone().add(ann.offset);
+    const geo=new THREE.BufferGeometry().setFromPoints([start,end]);
+    const mat=new THREE.LineBasicMaterial({
+      color:ann.color,transparent:true,opacity:0.0,
+      blending:THREE.AdditiveBlending
+    });
+    const line=new THREE.Line(geo,mat);
+    line.userData.annotation=ann;
+    leaderGroup.add(line);
+
+    // Small dot at end
+    const dotGeo=new THREE.SphereGeometry(0.012,8,8);
+    const dotMat=new THREE.MeshBasicMaterial({
+      color:ann.color,transparent:true,opacity:0.0
+    });
+    const dot=new THREE.Mesh(dotGeo,dotMat);
+    dot.position.copy(end);
+    leaderGroup.add(dot);
   });
-  const mesh=new THREE.Mesh(geo,mat);
-  mesh.rotation.x=0;
-  // Glow plane behind
-  const glowGeo=new THREE.PlaneGeometry(6,0.3);
-  const glowMat=new THREE.MeshBasicMaterial({
-    color:0x06b6d4,transparent:true,opacity:0.08,
-    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
-  });
-  const glow=new THREE.Mesh(glowGeo,glowMat);
-  const group=new THREE.Group();
-  group.add(mesh);group.add(glow);
+  group.add(leaderGroup);
+
+  // Store references for animation
+  group.userData={
+    wtWire,tcWire,etWire,necCloud,necMat,leaderGroup,
+    tumorCenter,revealed:false,opacity:0,annotations
+  };
+
   return group;
 }
 
-/* ── Assemble scene ── */
+/* ═══════════════════════════════════════════
+   Green scan beam
+   ═══════════════════════════════════════════ */
+function createScanBeam(){
+  const group=new THREE.Group();
+
+  // Main bright line
+  const lineGeo=new THREE.PlaneGeometry(5,0.008);
+  const lineMat=new THREE.MeshBasicMaterial({
+    color:0x00ff55,transparent:true,opacity:0.9,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  });
+  group.add(new THREE.Mesh(lineGeo,lineMat));
+
+  // Wide glow
+  const glowGeo=new THREE.PlaneGeometry(5,0.25);
+  const glowMat=new THREE.MeshBasicMaterial({
+    color:0x00ff44,transparent:true,opacity:0.06,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  });
+  group.add(new THREE.Mesh(glowGeo,glowMat));
+
+  // Medium glow
+  const medGeo=new THREE.PlaneGeometry(5,0.08);
+  const medMat=new THREE.MeshBasicMaterial({
+    color:0x00ff66,transparent:true,opacity:0.15,
+    side:THREE.DoubleSide,blending:THREE.AdditiveBlending
+  });
+  group.add(new THREE.Mesh(medGeo,medMat));
+
+  return group;
+}
+
+/* ═══════════════════════════════════════════
+   HTML annotation overlay (2D labels)
+   ═══════════════════════════════════════════ */
+function createAnnotationOverlay(){
+  const overlay=document.createElement("div");
+  overlay.id="annotation-overlay";
+  overlay.style.cssText="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:6;overflow:hidden;";
+  container.appendChild(overlay);
+
+  const labels=[];
+  const annotations=[
+    {id:"wt",text:"Whole Tumor (WT)\nPeritumoral Edema",color:"#22d3ee"},
+    {id:"tc",text:"Tumor Core (TC)\nSolid / Non-enhancing",color:"#a855f7"},
+    {id:"et",text:"Enhancing Tumor (ET)\nActive Enhancement",color:"#34d399"},
+    {id:"nc",text:"Necrotic Core\nCystic / Necrosis",color:"#f59e0b"},
+    {id:"diag",text:"Dx: Glioblastoma\nWHO Grade IV · IDH-wt",color:"#f87171"},
+  ];
+
+  annotations.forEach(ann=>{
+    const el=document.createElement("div");
+    el.style.cssText=`
+      position:absolute;opacity:0;transition:opacity 0.5s;
+      font:600 10px/1.4 'JetBrains Mono',monospace;
+      color:${ann.color};
+      padding:4px 8px;
+      border-left:2px solid ${ann.color};
+      background:rgba(2,10,20,0.75);
+      white-space:pre;letter-spacing:0.5px;
+    `;
+    el.textContent=ann.text;
+    overlay.appendChild(el);
+    labels.push({el,id:ann.id,visible:false});
+  });
+
+  return{overlay,labels};
+}
+
+/* ═══════════════════════════════════════════
+   Assemble & Animate
+   ═══════════════════════════════════════════ */
 const brainGroup=new THREE.Group();
 
-const pointCloud=createBrainPoints();
-const wireframe=createBrainWireframe();
+const cortex=createCortexMesh();
+const sulciLines=createSulciLines();
 const vasculature=createVasculature();
-const tumor=createTumor();
-const tumorBounds=createTumorBounds();
+const tumorSystem=createTumorSystem();
 const scanBeam=createScanBeam();
+const {overlay:annOverlay,labels:annLabels}=createAnnotationOverlay();
 
-brainGroup.add(wireframe);
-brainGroup.add(pointCloud);
+brainGroup.add(cortex);
+brainGroup.add(sulciLines);
 brainGroup.add(vasculature);
-brainGroup.add(tumor);
-brainGroup.add(tumorBounds);
+brainGroup.add(tumorSystem);
 
 scene.add(brainGroup);
 scene.add(scanBeam);
 
-// Subtle ambient + directional
-scene.add(new THREE.AmbientLight(0x0a1628,1));
-const dLight=new THREE.DirectionalLight(0x06b6d4,0.3);
-dLight.position.set(2,3,4);scene.add(dLight);
+// Lighting
+const ambLight=new THREE.AmbientLight(0x1a2a3a,0.8);
+scene.add(ambLight);
+const dirLight=new THREE.DirectionalLight(0xccddee,0.7);
+dirLight.position.set(2,3,4);scene.add(dirLight);
+const dirLight2=new THREE.DirectionalLight(0x4488aa,0.3);
+dirLight2.position.set(-3,1,-2);scene.add(dirLight2);
+// Green-tinted point light that follows scan beam
+const scanLight=new THREE.PointLight(0x00ff44,0,3);
+scene.add(scanLight);
 
-/* ── Animation state ── */
+/* ── Animation ── */
 let scanPhase=0;
-let tumorRevealed=false;
-let tumorOpacity=0;
 let cameraAngle=0;
-
 const sliceEl=document.getElementById("sliceNum");
 const volEl=document.getElementById("volVal");
+const td=tumorSystem.userData;
+
+function projectToScreen(pos3d){
+  const v=pos3d.clone().project(camera);
+  return{
+    x:(v.x*0.5+0.5)*W,
+    y:(-v.y*0.5+0.5)*H
+  };
+}
 
 function animate(){
   requestAnimationFrame(animate);
-  const dt=clock.getDelta();
+  const dt=Math.min(clock.getDelta(),0.05);
   const t=clock.getElapsedTime();
 
-  // Slow camera orbit with mouse influence
-  cameraAngle+=dt*0.12;
-  const camDist=5.2+Math.sin(t*0.3)*0.3;
-  const mx=mouse.x*0.4;
-  const my=mouse.y*0.25;
+  // Camera orbit
+  cameraAngle+=dt*0.1;
+  const camDist=4.8+Math.sin(t*0.25)*0.3;
+  const mx=mouse.x*0.35;
+  const my=mouse.y*0.2;
   camera.position.x=Math.sin(cameraAngle+mx)*camDist;
-  camera.position.z=Math.cos(cameraAngle+mx)*camDist*0.8;
-  camera.position.y=1.0+my*1.5+Math.sin(t*0.2)*0.3;
-  camera.lookAt(0,0.1,0);
+  camera.position.z=Math.cos(cameraAngle+mx)*camDist*0.75;
+  camera.position.y=0.6+my*1.2+Math.sin(t*0.18)*0.2;
+  camera.lookAt(0,0,0);
 
-  // Brain slow rotation
-  brainGroup.rotation.y=Math.sin(t*0.08)*0.15;
+  brainGroup.rotation.y=Math.sin(t*0.06)*0.1;
 
-  // Scan beam sweeps vertically
-  scanPhase+=dt*0.35;
-  const scanY=Math.sin(scanPhase)*1.6;
+  // Scan beam
+  scanPhase+=dt*0.3;
+  const scanY=Math.sin(scanPhase)*0.9;
   scanBeam.position.y=scanY;
+  scanLight.position.set(0,scanY,1.5);
+  scanLight.intensity=1.5+Math.sin(t*8)*0.3;
 
-  // Update slice readout
-  const sliceIdx=Math.floor((scanY+1.6)/3.2*155);
+  // Update cortex shader
+  if(cortex.material.uniforms){
+    cortex.material.uniforms.uTime.value=t;
+    cortex.material.uniforms.uScanY.value=scanY;
+  }
+
+  // Slice readout
+  const sliceIdx=Math.floor((scanY+0.9)/1.8*155);
   if(sliceEl)sliceEl.textContent=String(Math.max(1,Math.min(155,sliceIdx))).padStart(3,"0");
 
-  // Point cloud: highlight points near scan beam
-  const posArr=pointCloud.geometry.attributes.position.array;
-  const colArr=pointCloud.geometry.attributes.color.array;
-  const N=posArr.length/3;
-  for(let i=0;i<N;i++){
-    const py=posArr[i*3+1];
-    const dist=Math.abs(py-scanY);
-    if(dist<0.12){
-      // Bright cyan flash
-      const flash=1-dist/0.12;
-      colArr[i*3]=0.02+flash*0.2;
-      colArr[i*3+1]=0.55+flash*0.45;
-      colArr[i*3+2]=0.7+flash*0.3;
-      // Pixel displacement
-      posArr[i*3]+=(Math.random()-0.5)*0.002*flash;
-    }else{
-      // Restore base color gradually
-      const depth=Math.sqrt(posArr[i*3]**2+(posArr[i*3+1]/1.35)**2+(posArr[i*3+2]/1.05)**2);
-      if(depth>0.82){
-        colArr[i*3]+=(0.02-colArr[i*3])*0.02;
-        colArr[i*3+1]+=(0.6-colArr[i*3+1])*0.02;
-        colArr[i*3+2]+=(0.75-colArr[i*3+2])*0.02;
-      }else{
-        colArr[i*3]+=(0.25-colArr[i*3])*0.02;
-        colArr[i*3+1]+=(0.12-colArr[i*3+1])*0.02;
-        colArr[i*3+2]+=(0.5-colArr[i*3+2])*0.02;
-      }
-    }
-  }
-  pointCloud.geometry.attributes.position.needsUpdate=true;
-  pointCloud.geometry.attributes.color.needsUpdate=true;
+  // Blood flow
+  vasculature.userData.update(dt);
 
-  // Reveal tumor when scan beam passes through tumor region
-  const tumorY=0.15;
-  if(Math.abs(scanY-tumorY)<0.4&&!tumorRevealed){
-    tumorRevealed=true;
+  // Tumor reveal when scan passes through
+  const tumorY=td.tumorCenter.y;
+  if(Math.abs(scanY-tumorY)<0.35&&!td.revealed){
+    td.revealed=true;
   }
-  if(tumorRevealed&&tumorOpacity<0.85){
-    tumorOpacity+=dt*0.4;
-    tumor.material.opacity=Math.min(0.85,tumorOpacity);
-    tumorBounds.material.opacity=Math.min(0.5,tumorOpacity*0.6);
+  if(td.revealed&&td.opacity<1){
+    td.opacity+=dt*0.5;
+    const op=Math.min(1,td.opacity);
+    td.wtWire.material.opacity=op*0.7;
+    td.tcWire.material.opacity=op*0.8;
+    td.etWire.material.opacity=op*0.9;
+    td.necMat.opacity=op*0.6;
+    // Leader lines
+    td.leaderGroup.children.forEach(child=>{
+      if(child.material)child.material.opacity=op*0.7;
+    });
   }
 
-  // Tumor pulsing
-  if(tumorRevealed){
-    const pulse=1+Math.sin(t*2.5)*0.03;
-    tumor.scale.set(pulse,pulse,pulse);
-    // Volume readout
-    const vol=(12.4+Math.sin(t*1.5)*0.3).toFixed(1);
+  // Tumor pulse
+  if(td.revealed){
+    const pulse=1+Math.sin(t*2)*0.02;
+    td.wtWire.scale.set(pulse,pulse,pulse);
+    td.tcWire.scale.set(pulse*1.01,pulse*1.01,pulse*1.01);
+    td.etWire.scale.set(pulse*1.02,pulse*1.02,pulse*1.02);
+    const vol=(12.4+Math.sin(t*1.2)*0.4).toFixed(1);
     if(volEl)volEl.textContent=vol;
   }
 
-  // Vasculature subtle pulse
-  vasculature.children.forEach((line,i)=>{
-    line.material.opacity=line.material.opacity*0.98+(i<8?0.35:0.15)*0.02+Math.sin(t*3+i)*0.02;
-  });
+  // Update 2D annotation positions
+  if(td.revealed&&td.opacity>0.3){
+    const offsets=[
+      td.tumorCenter.clone().add(new THREE.Vector3(0.45,0.25,0.3)),
+      td.tumorCenter.clone().add(new THREE.Vector3(0.4,-0.2,0.25)),
+      td.tumorCenter.clone().add(new THREE.Vector3(-0.3,0.3,0.35)),
+      td.tumorCenter.clone().add(new THREE.Vector3(-0.35,-0.15,0.3)),
+      td.tumorCenter.clone().add(new THREE.Vector3(0.5,0.4,0.0)),
+    ];
+    annLabels.forEach((lbl,i)=>{
+      if(i<offsets.length){
+        // Transform offset by brain group rotation
+        const worldPos=offsets[i].clone();
+        brainGroup.localToWorld(worldPos);
+        const screen=projectToScreen(worldPos);
+        lbl.el.style.left=screen.x+"px";
+        lbl.el.style.top=screen.y+"px";
+        lbl.el.style.opacity=String(Math.min(1,td.opacity));
+      }
+    });
+  }
 
   renderer.render(scene,camera);
 }
 animate();
 
 /* ═══════════════════════════════════════════
-   HUD Data Stream (left bottom)
+   HUD Data Stream
    ═══════════════════════════════════════════ */
 const hudEl=document.getElementById("hud");
 const hudLines=[
@@ -681,39 +1150,38 @@ const hudLines=[
   {text:"[MDL] Loading checkpoint: BraTS_v4_Final.pth",delay:900,cls:""},
   {text:"[MDL] Architecture: nnU-Net 3D_fullres (encoder depth=6)",delay:1500,cls:""},
   {text:"[MDL] Parameters: 31.2M — FP16 inference enabled",delay:2100,cls:""},
-  {text:"[PRE] NIfTI loader ready — T1, T1ce, T2, FLAIR channels",delay:2800,cls:""},
+  {text:"[PRE] NIfTI loader: T1, T1ce, T2, FLAIR — 4 channels",delay:2800,cls:""},
   {text:"[PRE] Z-score normalization per-channel active",delay:3300,cls:""},
-  {text:"[PRE] Resampling to 1mm³ isotropic",delay:3700,cls:""},
-  {text:"[SEG] Patch size: 128×128×128 — sliding window σ=0.5",delay:4200,cls:""},
-  {text:"[SEG] Regions: WT (label 2) | TC (labels 1,4) | ET (label 4)",delay:4800,cls:""},
-  {text:"[NET] Secure WebSocket tunnel established",delay:5400,cls:""},
-  {text:"[SYS] Status: READY — Awaiting physician authentication",delay:6000,cls:"bright"},
-  {text:"[MON] Real-time inference pipeline: STANDBY",delay:6600,cls:"warn"},
+  {text:"[PRE] Resampling to 1mm³ isotropic voxel grid",delay:3700,cls:""},
+  {text:"[SEG] Patch: 128×128×128 — sliding window σ=0.5",delay:4200,cls:""},
+  {text:"[SEG] Labels: WT(2) | TC(1,4) | ET(4) | NCR(1)",delay:4800,cls:""},
+  {text:"[SEG] Dice scores: WT=0.912 TC=0.943 ET=0.891",delay:5200,cls:""},
+  {text:"[VAS] Cerebrovascular mapping: 3 major territories",delay:5600,cls:""},
+  {text:"[NET] Secure WebSocket tunnel established",delay:6000,cls:""},
+  {text:"[SYS] Status: READY — Awaiting authentication",delay:6400,cls:"bright"},
+  {text:"[DX]  Preliminary: Glioblastoma WHO IV — IDH-wildtype",delay:6800,cls:"warn"},
+  {text:"[MON] Real-time inference pipeline: STANDBY",delay:7200,cls:"warn"},
 ];
 
 let hudIndex=0;
 function appendHudLine(){
   if(hudIndex>=hudLines.length){
-    // Loop with new timestamps
-    setTimeout(()=>{
-      hudEl.innerHTML="";hudIndex=0;appendHudLine();
-    },3000);
+    setTimeout(()=>{hudEl.innerHTML="";hudIndex=0;appendHudLine();},4000);
     return;
   }
   const item=hudLines[hudIndex];
+  const prevDelay=hudIndex>0?hudLines[hudIndex-1].delay:0;
   setTimeout(()=>{
     const div=document.createElement("div");
     div.className="line"+(item.cls?" "+item.cls:"");
     const ts=new Date().toISOString().substr(11,12);
     div.innerHTML=`<span style="color:var(--muted)">${ts}</span> ${item.text}`;
-    // Keep max lines
-    if(hudEl.children.length>10)hudEl.removeChild(hudEl.firstChild);
+    if(hudEl.children.length>12)hudEl.removeChild(hudEl.firstChild);
     hudEl.appendChild(div);
-    // Scroll
     hudEl.scrollTop=hudEl.scrollHeight;
     hudIndex++;
     appendHudLine();
-  },item.delay-(hudIndex>0?hudLines[hudIndex-1].delay:0));
+  },item.delay-prevDelay);
 }
 appendHudLine();
 

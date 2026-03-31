@@ -1,0 +1,16 @@
+{
+  "label_1_dice": 0.0,
+  "label_1_iou": 0.0,
+  "label_2_dice": 0.0019377497880562699,
+  "label_2_iou": 0.0009698145229713057,
+  "label_4_dice": 0.0,
+  "label_4_iou": 0.0,
+  "WT_dice": 0.4397066811514287,
+  "WT_iou": 0.28181026979972784,
+  "TC_dice": 0.027168014564286955,
+  "TC_iou": 0.013771073646845156,
+  "ET_dice": 0.0,
+  "ET_iou": 0.0,
+  "gt_nonzero_voxels": 21245,
+  "pred_nonzero_voxels": 29948
+}

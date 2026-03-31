@@ -1,0 +1,13 @@
+.aider*
+
+# Large data files
+demo_site/data/
+viewer/cases/
+*.gz
+*.gif
+*.onnx
+*.pt
+*.nii
+*.npy
+__pycache__/
+*.pyc

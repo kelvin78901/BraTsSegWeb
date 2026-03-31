@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>BraTS nnU-Net Segmentation Explorer</title>
+  <style>
+    :root{
+      --bg:#0b1222; --panel:#0f172a; --card:#111827; --border:#1f2937;
+      --text:#e5e7eb; --muted:#9ca3af; --accent:#67e8f9;
+      --fp:#ef4444; --fn:#3b82f6;
+    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;background:rgba(11,18,34,.9);backdrop-filter:blur(8px);
+      border-bottom:1px solid var(--border);padding:14px 18px}
+    h1{margin:0;font-size:18px}
+    .sub{color:var(--muted);font-size:13px;margin-top:4px}
+    main{max-width:1400px;margin:0 auto;padding:14px;display:grid;gap:12px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    label{font-size:12px;color:var(--muted);font-weight:700}
+    select,input,button{background:#0b1222;color:var(--text);border:1px solid var(--border);
+      border-radius:10px;padding:8px 10px}
+    button{cursor:pointer;font-weight:800}
+    .grid4{display:grid;grid-template-columns:repeat(4, minmax(240px, 1fr));gap:10px}
+    .grid3{display:grid;grid-template-columns:repeat(3, minmax(240px, 1fr));gap:10px}
+    .viewTitle{display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px}
+    .viewTitle b{font-size:13px}
+    .hint{color:var(--muted);font-size:12px}
+    canvas{width:100%;background:#050a14;border:1px solid var(--border);border-radius:12px}
+    .kpi{display:grid;grid-template-columns:repeat(auto-fit, minmax(220px,1fr));gap:10px}
+    .kpi .box{border:1px solid var(--border);border-radius:12px;padding:10px;background:#0b1222}
+    .kpi .box .t{color:var(--muted);font-size:12px}
+    .kpi .box .v{font-size:20px;font-weight:900}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:8px 6px;font-size:12px;text-align:left}
+    th{color:var(--muted)}
+    .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .dot{width:10px;height:10px;border-radius:999px;display:inline-block;margin-right:6px}
+    .dot.fp{background:var(--fp)} .dot.fn{background:var(--fn)}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:4px 10px;border-radius:999px;
+      background:rgba(103,232,249,.12);color:var(--accent);font-weight:800;font-size:12px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="pill">BraTS 2021 · nnU-Net Result Explorer</div>
+  <h1>Multi-modal · 3-view (Axial/Coronal/Sagittal) · GT vs Prediction vs Diff · ROI Zoom · Metrics</h1>
+  <div class="sub">
+    Diff colors: <span class="dot fp"></span>FP (red) &nbsp; <span class="dot fn"></span>FN (blue). Labels follow BraTS: 0/1/2/4.
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row">
+      <button id="btnReload">Reload Case List</button>
+
+      <label>Case</label>
+      <select id="caseSelect"></select>
+
+      <label>Modality</label>
+      <select id="modSelect">
+        <option value="flair">FLAIR</option>
+        <option value="t1">T1</option>
+        <option value="t1ce">T1CE</option>
+        <option value="t2">T2</option>
+      </select>
+
+      <label>Slice</label>
+      <input id="sliceRange" type="range" min="0" max="10" value="0"/>
+      <span id="sliceLabel" class="hint"></span>
+
+      <label>Opacity</label>
+      <input id="alphaRange" type="range" min="0" max="1" step="0.05" value="0.45"/>
+      <span id="alphaLabel" class="hint">0.45</span>
+
+      <label>ROI Zoom</label>
+      <select id="roiMode">
+        <option value="auto">Auto (bbox)</option>
+        <option value="center">Center</option>
+        <option value="off">Off</option>
+      </select>
+
+      <label>ROI Size</label>
+      <select id="roiSize">
+        <option value="96">96</option>
+        <option value="128" selected>128</option>
+        <option value="160">160</option>
+      </select>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <span class="hint">Data source: <code>/data/index.json</code> and <code>/data/&lt;case&gt;/{flair,t1,t1ce,t2,gt,pred}.nii.gz</code></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="viewTitle">
+      <b>Metrics</b>
+      <span class="hint" id="metricHint">—</span>
+    </div>
+    <div class="kpi" id="kpi"></div>
+    <div style="margin-top:10px;overflow:auto">
+      <table id="metricTable">
+        <thead><tr><th>Region</th><th>Dice</th><th>IoU</th><th>Precision</th><th>Recall</th><th>TP</th><th>FP</th><th>FN</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 3 rows: Axial / Coronal / Sagittal ; each row 4 cols: Raw / GT / Pred / Diff -->
+  <section class="card">
+    <div class="viewTitle"><b>Axial (Z)</b><span class="hint" id="axInfo"></span></div>
+    <div class="grid4">
+      <div><div class="hint">Raw</div><canvas id="axRaw" width="320" height="320"></canvas></div>
+      <div><div class="hint">GT Overlay</div><canvas id="axGT" width="320" height="320"></canvas></div>
+      <div><div class="hint">Pred Overlay</div><canvas id="axPR" width="320" height="320"></canvas></div>
+      <div><div class="hint">Diff (FP red / FN blue)</div><canvas id="axDF" width="320" height="320"></canvas></div>
+    </div>
+
+    <div class="viewTitle" style="margin-top:14px;"><b>Coronal (Y)</b><span class="hint" id="coInfo"></span></div>
+    <div class="grid4">
+      <div><div class="hint">Raw</div><canvas id="coRaw" width="320" height="320"></canvas></div>
+      <div><div class="hint">GT Overlay</div><canvas id="coGT" width="320" height="320"></canvas></div>
+      <div><div class="hint">Pred Overlay</div><canvas id="coPR" width="320" height="320"></canvas></div>
+      <div><div class="hint">Diff (FP red / FN blue)</div><canvas id="coDF" width="320" height="320"></canvas></div>
+    </div>
+
+    <div class="viewTitle" style="margin-top:14px;"><b>Sagittal (X)</b><span class="hint" id="saInfo"></span></div>
+    <div class="grid4">
+      <div><div class="hint">Raw</div><canvas id="saRaw" width="320" height="320"></canvas></div>
+      <div><div class="hint">GT Overlay</div><canvas id="saGT" width="320" height="320"></canvas></div>
+      <div><div class="hint">Pred Overlay</div><canvas id="saPR" width="320" height="320"></canvas></div>
+      <div><div class="hint">Diff (FP red / FN blue)</div><canvas id="saDF" width="320" height="320"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="viewTitle">
+      <b>ROI Zoom (same slice indices)</b>
+      <span class="hint">Auto bbox based on GT∪Pred (recommended for showcasing)</span>
+    </div>
+    <div class="grid3">
+      <div><div class="hint">GT Zoom</div><canvas id="roiGT" width="320" height="320"></canvas></div>
+      <div><div class="hint">Pred Zoom</div><canvas id="roiPR" width="320" height="320"></canvas></div>
+      <div><div class="hint">Diff Zoom</div><canvas id="roiDF" width="320" height="320"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="hint" id="debug">Ready.</div>
+  </section>
+</main>
+
+<!-- IMPORTANT: use local nifti-reader.js (UMD that provides window.nifti) -->
+<script src="./nifti-reader.js"></script>
+
+<script>
+/** ============ Safety check ============ */
+if (!window.nifti) {
+  throw new Error("nifti-reader.js loaded, but window.nifti is missing. Make sure you are using the UMD build that exposes global nifti.");
+}
+const nifti = window.nifti;
+
+/** ============ DOM ============ */
+const btnReload = document.getElementById("btnReload");
+const caseSelect = document.getElementById("caseSelect");
+const modSelect = document.getElementById("modSelect");
+const sliceRange = document.getElementById("sliceRange");
+const sliceLabel = document.getElementById("sliceLabel");
+const alphaRange = document.getElementById("alphaRange");
+const alphaLabel = document.getElementById("alphaLabel");
+const roiMode = document.getElementById("roiMode");
+const roiSize = document.getElementById("roiSize");
+
+const metricHint = document.getElementById("metricHint");
+const kpi = document.getElementById("kpi");
+const metricTableBody = document.querySelector("#metricTable tbody");
+const debug = document.getElementById("debug");
+
+const axInfo = document.getElementById("axInfo");
+const coInfo = document.getElementById("coInfo");
+const saInfo = document.getElementById("saInfo");
+
+/** canvases */
+const C = (id)=>document.getElementById(id);
+const cvs = {
+  ax:{raw:C("axRaw"), gt:C("axGT"), pr:C("axPR"), df:C("axDF")},
+  co:{raw:C("coRaw"), gt:C("coGT"), pr:C("coPR"), df:C("coDF")},
+  sa:{raw:C("saRaw"), gt:C("saGT"), pr:C("saPR"), df:C("saDF")},
+  roi:{gt:C("roiGT"), pr:C("roiPR"), df:C("roiDF")}
+};
+
+/** ============ State ============ */
+let volMRI=null, volGT=null, volPR=null;
+let currentCase=null;
+
+/** BraTS palette (overlay for labels 1/2/4) */
+const labelColor = {
+  0: [0,0,0,0],
+  1: [255, 99, 132, 170],  // NCR/NET
+  2: [94, 234, 212, 170],  // ED
+  4: [99, 102, 241, 170]   // ET
+};
+
+/** Diff colors (FP/FN) */
+const FP = [239, 68, 68, 190];
+const FN = [59, 130, 246, 190];
+
+/** ============ NIfTI fetch/parse ============ */
+async function fetchNifti(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Fetch failed: ${url} (${resp.status})`);
+  let raw = await resp.arrayBuffer();
+
+  // gzip?
+  if (nifti.isCompressed(raw)) raw = nifti.decompress(raw);
+  if (!nifti.isNIFTI(raw)) throw new Error(`Not a valid NIfTI: ${url}`);
+
+  const header = nifti.readHeader(raw);
+  const imgBuf = nifti.readImage(header, raw);
+
+  const dims = [header.dims[1], header.dims[2], header.dims[3]]; // X,Y,Z
+  const code = header.datatypeCode;
+
+  // Map datatype -> TypedArray
+  let typed;
+  if (code === nifti.NIFTI1.TYPE_UINT8) typed = new Uint8Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_INT16) typed = new Int16Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_INT32) typed = new Int32Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_FLOAT32) typed = new Float32Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_FLOAT64) typed = new Float64Array(imgBuf);
+  else typed = new Uint8Array(imgBuf);
+
+  // Apply scl_slope/inter if present -> float32
+  const slope = (header.scl_slope === 0 || header.scl_slope == null) ? 1.0 : header.scl_slope;
+  const inter = header.scl_inter || 0.0;
+  const data = new Float32Array(typed.length);
+  for (let i=0;i<typed.length;i++) data[i] = typed[i]*slope + inter;
+
+  return { data, dims, header };
+}
+
+/** ============ Slicing helpers ============ */
+function idx3(x,y,z,X,Y){ return x + y*X + z*X*Y; }
+
+function getSlice(vol, axis, idx){
+  const {data, dims:[X,Y,Z]} = vol;
+  let w,h, out;
+
+  if (axis === "axial") { // z fixed
+    w=X; h=Y;
+    out = new Float32Array(w*h);
+    let p=0;
+    for (let y=0;y<Y;y++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,y,idx,X,Y)];
+    return {w,h,arr:out};
+  }
+  if (axis === "coronal") { // y fixed
+    w=X; h=Z;
+    out = new Float32Array(w*h);
+    let p=0;
+    for (let z=0;z<Z;z++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,idx,z,X,Y)];
+    return {w,h,arr:out};
+  }
+  // sagittal x fixed
+  w=Y; h=Z;
+  out = new Float32Array(w*h);
+  let p=0;
+  for (let z=0;z<Z;z++) for (let y=0;y<Y;y++) out[p++] = data[idx3(idx,y,z,X,Y)];
+  return {w,h,arr:out};
+}
+
+/** ============ Rendering ============ */
+function normalizeToUint8(slice){
+  let mn=Infinity, mx=-Infinity;
+  for (const v of slice) { if (v<mn) mn=v; if (v>mx) mx=v; }
+  const out = new Uint8ClampedArray(slice.length);
+  const inv = (mx>mn) ? 255/(mx-mn) : 1;
+  for (let i=0;i<slice.length;i++){
+    let g = (slice[i]-mn)*inv;
+    if (g<0) g=0; if (g>255) g=255;
+    out[i]=g;
+  }
+  return out;
+}
+
+function drawBase(canvas, w, h, grayU8){
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(w,h);
+  for (let i=0;i<grayU8.length;i++){
+    const b=i*4, g=grayU8[i];
+    img.data[b]=g; img.data[b+1]=g; img.data[b+2]=g; img.data[b+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  return img;
+}
+
+function overlayLabels(img, maskU8, alpha){
+  // mask values are 0/1/2/4; but our volumes are float -> round
+  for (let i=0;i<maskU8.length;i++){
+    const m = maskU8[i];
+    if (m===0) continue;
+    const c = labelColor[m];
+    if (!c) continue;
+    const b=i*4;
+    img.data[b]   = (1-alpha)*img.data[b]   + alpha*c[0];
+    img.data[b+1] = (1-alpha)*img.data[b+1] + alpha*c[1];
+    img.data[b+2] = (1-alpha)*img.data[b+2] + alpha*c[2];
+  }
+}
+
+function overlayDiff(img, gtU8, prU8, alpha){
+  // FP red: pr>0 gt==0 ; FN blue: gt>0 pr==0
+  for (let i=0;i<gtU8.length;i++){
+    const g = gtU8[i], p = prU8[i];
+    const b=i*4;
+    if (p>0 && g===0){
+      img.data[b]   = (1-alpha)*img.data[b]   + alpha*FP[0];
+      img.data[b+1] = (1-alpha)*img.data[b+1] + alpha*FP[1];
+      img.data[b+2] = (1-alpha)*img.data[b+2] + alpha*FP[2];
+    } else if (g>0 && p===0){
+      img.data[b]   = (1-alpha)*img.data[b]   + alpha*FN[0];
+      img.data[b+1] = (1-alpha)*img.data[b+1] + alpha*FN[1];
+      img.data[b+2] = (1-alpha)*img.data[b+2] + alpha*FN[2];
+    }
+  }
+}
+
+function put(canvas, img){
+  const ctx=canvas.getContext("2d");
+  ctx.putImageData(img,0,0);
+}
+
+function toLabelU8(floatArr){
+  const out = new Uint8ClampedArray(floatArr.length);
+  for (let i=0;i<floatArr.length;i++) out[i] = Math.round(floatArr[i]);
+  return out;
+}
+
+/** ============ ROI bbox on union mask (GT∪Pred) ============ */
+function computeBBox2D(maskA, maskB, w, h){
+  let x0=w, y0=h, x1=0, y1=0;
+  let found=false;
+  for (let y=0;y<h;y++){
+    for (let x=0;x<w;x++){
+      const i = x + y*w;
+      const v = (maskA[i]>0) || (maskB && maskB[i]>0);
+      if (v){
+        found=true;
+        if (x<x0) x0=x;
+        if (y<y0) y0=y;
+        if (x>x1) x1=x;
+        if (y>y1) y1=y;
+      }
+    }
+  }
+  if (!found) return null;
+  return {x0,y0,x1,y1};
+}
+
+function crop2D(arr, w, h, cx, cy, size){
+  const half = Math.floor(size/2);
+  const x0 = Math.max(0, cx-half);
+  const y0 = Math.max(0, cy-half);
+  const x1 = Math.min(w, cx+half);
+  const y1 = Math.min(h, cy+half);
+
+  const cw = x1-x0;
+  const ch = y1-y0;
+  const out = new Float32Array(cw*ch);
+  let p=0;
+  for (let y=y0;y<y1;y++){
+    for (let x=x0;x<x1;x++){
+      out[p++] = arr[x + y*w];
+    }
+  }
+  return {w:cw, h:ch, arr:out};
+}
+
+/** ============ Metrics UI ============ */
+async function loadMetrics(caseId){
+  const url = `/data/${caseId}/metrics.json`;
+  const resp = await fetch(url);
+  if (!resp.ok) { metricHint.textContent = `metrics.json not found`; return null; }
+  return await resp.json();
+}
+
+function fmt(x){ return (typeof x==="number") ? x.toFixed(4) : "-"; }
+
+function renderMetrics(m){
+  kpi.innerHTML = "";
+  metricTableBody.innerHTML = "";
+  if (!m) return;
+
+  metricHint.textContent = `${m.case} · Regions: WT/TC/ET`;
+
+  const regions = m.regions;
+  // KPIs: show Dice WT/TC/ET
+  for (const r of ["WT","TC","ET"]){
+    const box = document.createElement("div");
+    box.className = "box";
+    box.innerHTML = `<div class="t">${r} Dice</div><div class="v">${fmt(regions[r].dice)}</div>
+                     <div class="hint">IoU ${fmt(regions[r].iou)}</div>`;
+    kpi.appendChild(box);
+  }
+
+  for (const r of ["WT","TC","ET"]){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><b>${r}</b></td>
+      <td>${fmt(regions[r].dice)}</td>
+      <td>${fmt(regions[r].iou)}</td>
+      <td>${fmt(regions[r].precision)}</td>
+      <td>${fmt(regions[r].recall)}</td>
+      <td>${regions[r].tp}</td>
+      <td>${regions[r].fp}</td>
+      <td>${regions[r].fn}</td>
+    `;
+    metricTableBody.appendChild(tr);
+  }
+}
+
+/** ============ Main render ============ */
+function renderAll(){
+  if (!volMRI || !volGT || !volPR) return;
+
+  const [X,Y,Z] = volMRI.dims;
+  const maxZ = Z-1;
+  sliceRange.max = maxZ;
+  const z = Math.min(maxZ, Number(sliceRange.value));
+  sliceLabel.textContent = `z=${z}/${maxZ}`;
+  alphaLabel.textContent = alphaRange.value;
+
+  const alpha = parseFloat(alphaRange.value);
+
+  // Axial uses z index; Coronal uses y=mid; Sagittal uses x=mid
+  const yMid = Math.floor(Y/2);
+  const xMid = Math.floor(X/2);
+
+  // --- Axial
+  {
+    const mri = getSlice(volMRI, "axial", z);
+    const gt  = getSlice(volGT, "axial", z);
+    const pr  = getSlice(volPR, "axial", z);
+
+    const baseU8 = normalizeToUint8(mri.arr);
+    const gtU8 = toLabelU8(gt.arr);
+    const prU8 = toLabelU8(pr.arr);
+
+    axInfo.textContent = `${currentCase} · ${modSelect.value.toUpperCase()} · axial z=${z}`;
+
+    // raw
+    drawBase(cvs.ax.raw, mri.w, mri.h, baseU8);
+
+    // GT overlay
+    let imgGT = drawBase(cvs.ax.gt, mri.w, mri.h, baseU8);
+    overlayLabels(imgGT, gtU8, alpha);
+    put(cvs.ax.gt, imgGT);
+
+    // Pred overlay
+    let imgPR = drawBase(cvs.ax.pr, mri.w, mri.h, baseU8);
+    overlayLabels(imgPR, prU8, alpha);
+    put(cvs.ax.pr, imgPR);
+
+    // Diff
+    let imgDF = drawBase(cvs.ax.df, mri.w, mri.h, baseU8);
+    overlayDiff(imgDF, gtU8, prU8, alpha);
+    put(cvs.ax.df, imgDF);
+
+    // ROI render (axial slice based)
+    renderROI(mri, gtU8, prU8, baseU8, "axial");
+  }
+
+  // --- Coronal
+  {
+    const mri = getSlice(volMRI, "coronal", yMid);
+    const gt  = getSlice(volGT, "coronal", yMid);
+    const pr  = getSlice(volPR, "coronal", yMid);
+
+    const baseU8 = normalizeToUint8(mri.arr);
+    const gtU8 = toLabelU8(gt.arr);
+    const prU8 = toLabelU8(pr.arr);
+
+    coInfo.textContent = `${currentCase} · coronal y=${yMid}`;
+
+    drawBase(cvs.co.raw, mri.w, mri.h, baseU8);
+
+    let imgGT = drawBase(cvs.co.gt, mri.w, mri.h, baseU8);
+    overlayLabels(imgGT, gtU8, alpha);
+    put(cvs.co.gt, imgGT);
+
+    let imgPR = drawBase(cvs.co.pr, mri.w, mri.h, baseU8);
+    overlayLabels(imgPR, prU8, alpha);
+    put(cvs.co.pr, imgPR);
+
+    let imgDF = drawBase(cvs.co.df, mri.w, mri.h, baseU8);
+    overlayDiff(imgDF, gtU8, prU8, alpha);
+    put(cvs.co.df, imgDF);
+  }
+
+  // --- Sagittal
+  {
+    const mri = getSlice(volMRI, "sagittal", xMid);
+    const gt  = getSlice(volGT, "sagittal", xMid);
+    const pr  = getSlice(volPR, "sagittal", xMid);
+
+    const baseU8 = normalizeToUint8(mri.arr);
+    const gtU8 = toLabelU8(gt.arr);
+    const prU8 = toLabelU8(pr.arr);
+
+    saInfo.textContent = `${currentCase} · sagittal x=${xMid}`;
+
+    drawBase(cvs.sa.raw, mri.w, mri.h, baseU8);
+
+    let imgGT = drawBase(cvs.sa.gt, mri.w, mri.h, baseU8);
+    overlayLabels(imgGT, gtU8, alpha);
+    put(cvs.sa.gt, imgGT);
+
+    let imgPR = drawBase(cvs.sa.pr, mri.w, mri.h, baseU8);
+    overlayLabels(imgPR, prU8, alpha);
+    put(cvs.sa.pr, imgPR);
+
+    let imgDF = drawBase(cvs.sa.df, mri.w, mri.h, baseU8);
+    overlayDiff(imgDF, gtU8, prU8, alpha);
+    put(cvs.sa.df, imgDF);
+  }
+
+  debug.textContent = `Loaded: MRI dims=${volMRI.dims} · GT dims=${volGT.dims} · Pred dims=${volPR.dims}`;
+}
+
+function renderROI(mriSlice, gtU8, prU8, baseU8, axisName){
+  const mode = roiMode.value;
+  if (mode === "off"){
+    // clear
+    ["gt","pr","df"].forEach(k=>{
+      const c = cvs.roi[k];
+      const ctx=c.getContext("2d");
+      ctx.clearRect(0,0,c.width,c.height);
+    });
+    return;
+  }
+  const size = parseInt(roiSize.value,10);
+
+  let cx = Math.floor(mriSlice.w/2);
+  let cy = Math.floor(mriSlice.h/2);
+
+  if (mode === "auto"){
+    const bb = computeBBox2D(gtU8, prU8, mriSlice.w, mriSlice.h);
+    if (bb){
+      cx = Math.floor((bb.x0 + bb.x1)/2);
+      cy = Math.floor((bb.y0 + bb.y1)/2);
+    }
+  }
+
+  // crop MRI float slice for normalization stability
+  const mriCrop = crop2D(mriSlice.arr, mriSlice.w, mriSlice.h, cx, cy, size);
+  const gtCropF = crop2D(Array.from(gtU8, x=>x), mriSlice.w, mriSlice.h, cx, cy, size);
+  const prCropF = crop2D(Array.from(prU8, x=>x), mriSlice.w, mriSlice.h, cx, cy, size);
+
+  const baseCropU8 = normalizeToUint8(mriCrop.arr);
+  const gtCropU8 = new Uint8ClampedArray(gtCropF.arr.map(v=>v));
+  const prCropU8 = new Uint8ClampedArray(prCropF.arr.map(v=>v));
+
+  const alpha = parseFloat(alphaRange.value);
+
+  // GT zoom
+  let imgGT = drawBase(cvs.roi.gt, mriCrop.w, mriCrop.h, baseCropU8);
+  overlayLabels(imgGT, gtCropU8, alpha);
+  put(cvs.roi.gt, imgGT);
+
+  // Pred zoom
+  let imgPR = drawBase(cvs.roi.pr, mriCrop.w, mriCrop.h, baseCropU8);
+  overlayLabels(imgPR, prCropU8, alpha);
+  put(cvs.roi.pr, imgPR);
+
+  // Diff zoom
+  let imgDF = drawBase(cvs.roi.df, mriCrop.w, mriCrop.h, baseCropU8);
+  overlayDiff(imgDF, gtCropU8, prCropU8, alpha);
+  put(cvs.roi.df, imgDF);
+}
+
+/** ============ Loading pipeline ============ */
+async function loadCase(caseId){
+  currentCase = caseId;
+  debug.textContent = "Loading volumes...";
+
+  const mod = modSelect.value;
+  const mriUrl = `/data/${caseId}/${mod}.nii.gz`;
+  const gtUrl  = `/data/${caseId}/gt.nii.gz`;
+  const prUrl  = `/data/${caseId}/pred.nii.gz`;
+
+  // parallel
+  const [mri, gt, pr] = await Promise.all([
+    fetchNifti(mriUrl),
+    fetchNifti(gtUrl),
+    fetchNifti(prUrl)
+  ]);
+
+  volMRI = mri;
+  volGT  = gt;
+  volPR  = pr;
+
+  // load metrics
+  const metrics = await loadMetrics(caseId);
+  renderMetrics(metrics);
+
+  renderAll();
+}
+
+async function reloadCaseList(){
+  const resp = await fetch("/data/index.json");
+  if (!resp.ok) throw new Error("index.json not found. Run build_brats_web.py first.");
+  const cases = await resp.json();
+
+  caseSelect.innerHTML = "";
+  for (const c of cases){
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    caseSelect.appendChild(opt);
+  }
+  if (cases.length){
+    caseSelect.value = cases[0];
+    await loadCase(cases[0]);
+  }
+}
+
+/** ============ Events ============ */
+btnReload.addEventListener("click", ()=>reloadCaseList().catch(e=>debug.textContent=String(e)));
+caseSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
+modSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
+[sliceRange, alphaRange, roiMode, roiSize].forEach(el=>el.addEventListener("input", renderAll));
+
+/** Auto start */
+reloadCaseList().catch(e=>debug.textContent=String(e));
+</script>
+</body>
+</html>

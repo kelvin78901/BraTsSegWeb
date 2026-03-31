@@ -1,0 +1,16 @@
+# ── Sidecar CPU-only deployment (ONNX backend) ──
+# No PyTorch, no MONAI, no CUDA required.
+
+# Web framework
+fastapi>=0.104
+uvicorn>=0.24
+python-multipart>=0.0.9
+
+# NIfTI / image processing
+numpy>=1.24
+nibabel>=5.1
+Pillow>=10.0
+scipy>=1.11
+
+# Inference engine (CPU only)
+onnxruntime>=1.17

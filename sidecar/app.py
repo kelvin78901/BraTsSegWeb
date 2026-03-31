@@ -1,10 +1,13 @@
 import base64
 import io
+import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
+from datetime import datetime
 from functools import lru_cache
 
 import numpy as np
@@ -12,12 +15,21 @@ from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image
 import nibabel as nib
+from starlette.formparsers import MultiPartParser
 
 app = FastAPI()
+
+# Raise multipart parser limits to support MRI uploads.
+_MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(512 * 1024 * 1024)))
+if hasattr(MultiPartParser, "max_file_size"):
+    MultiPartParser.max_file_size = _MAX_UPLOAD_BYTES
+if hasattr(MultiPartParser, "max_part_size"):
+    MultiPartParser.max_part_size = _MAX_UPLOAD_BYTES
 
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_CASES = os.path.abspath(os.path.join(_BASE, "..", "spring", "demo", "src", "main", "resources", "static", "viewer", "cases"))
 CASES_DIR = os.getenv("CASES_DIR", _DEFAULT_CASES)
+_INDEX_JSON_PATH = os.path.join(CASES_DIR, "index.json")
 
 LABEL_COLORS = {
     1: np.array([255, 50, 50], dtype=np.uint8),
@@ -59,6 +71,57 @@ def to_png_bytes(arr: np.ndarray) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _new_upload_case_id() -> str:
+    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return f"UPLOAD_{stamp}_{uuid.uuid4().hex[:6].upper()}"
+
+
+def _update_index_json(case_id: str):
+    os.makedirs(CASES_DIR, exist_ok=True)
+    case_list = []
+    if os.path.exists(_INDEX_JSON_PATH):
+        try:
+            with open(_INDEX_JSON_PATH, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, list):
+                    case_list = [str(x) for x in loaded]
+        except Exception:
+            case_list = []
+
+    if case_id not in case_list:
+        case_list.append(case_id)
+
+    case_list = sorted(set(case_list))
+    with open(_INDEX_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(case_list, f, ensure_ascii=False, indent=2)
+
+
+def _persist_uploaded_case(case_id: str, input_nii_path: str, pred_path: str):
+    case_dir = os.path.join(CASES_DIR, case_id)
+    os.makedirs(case_dir, exist_ok=True)
+
+    # Keep compatibility with existing viewers expecting these files.
+    flair_path = os.path.join(case_dir, "flair.nii.gz")
+    t1_path = os.path.join(case_dir, "t1.nii.gz")
+    t1ce_path = os.path.join(case_dir, "t1ce.nii.gz")
+    t2_path = os.path.join(case_dir, "t2.nii.gz")
+    pred_out = os.path.join(case_dir, "pred.nii.gz")
+
+    shutil.copy2(input_nii_path, flair_path)
+    shutil.copy2(input_nii_path, t1_path)
+    shutil.copy2(input_nii_path, t1ce_path)
+    shutil.copy2(input_nii_path, t2_path)
+    shutil.copy2(pred_path, pred_out)
+
+    _update_index_json(case_id)
+    load_case.cache_clear()
+
+    return {
+        "caseId": case_id,
+        "casePath": f"/viewer/cases/{case_id}",
+    }
 
 
 @lru_cache(maxsize=8)
@@ -146,6 +209,60 @@ _NNUNET_TRAINER = os.getenv("NNUNET_TRAINER", "nnUNetTrainerV2BraTSRegions_DA4_B
 _NNUNET_PLANS  = os.getenv("NNUNET_PLANS",   "nnUNetPlansv2.1")
 _NNUNET_FOLD   = os.getenv("NNUNET_FOLD",    "0")
 _NNUNET_MODEL  = os.getenv("NNUNET_MODEL",   "3d_fullres")
+_SEG_BACKEND   = os.getenv("SEG_BACKEND", "auto").strip().lower()
+
+_OPEN_MODEL_URL = os.getenv(
+    "OPEN_BRATS_MODEL_URL",
+    "https://huggingface.co/MONAI/brats_mri_segmentation/resolve/main/models/model.pt"
+)
+_OPEN_MODEL_PATH = os.getenv(
+    "OPEN_BRATS_MODEL_PATH",
+    os.path.join(_BASE, "models", "monai_brats", "model.pt")
+)
+
+# ONNX model path (pre-exported via export_onnx.py)
+_ONNX_MODEL_PATH = os.getenv(
+    "ONNX_MODEL_PATH",
+    os.path.join(_BASE, "models", "monai_brats", "model.onnx")
+)
+
+
+def _run_open_brats_infer(input_nii_path: str, work_dir: str):
+    pred_path = os.path.join(work_dir, "open_model_pred.nii.gz")
+    script_path = os.path.join(_BASE, "open_brats_infer.py")
+    cmd = [
+        sys.executable,
+        script_path,
+        "--input", input_nii_path,
+        "--output", pred_path,
+        "--model-path", _OPEN_MODEL_PATH,
+        "--model-url", _OPEN_MODEL_URL,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if result.returncode != 0:
+        raise RuntimeError(f"Open model inference failed: {result.stderr[-2000:] or result.stdout[-2000:]}")
+    if not os.path.exists(pred_path):
+        raise FileNotFoundError(f"Prediction not found at {pred_path}")
+    return pred_path
+
+
+def _run_onnx_infer(input_nii_path: str, work_dir: str):
+    """Run BraTS inference via ONNX Runtime (CPU only, no torch needed)."""
+    pred_path = os.path.join(work_dir, "onnx_pred.nii.gz")
+    script_path = os.path.join(_BASE, "onnx_brats_infer.py")
+    cmd = [
+        sys.executable,
+        script_path,
+        "--input", input_nii_path,
+        "--output", pred_path,
+        "--model-path", _ONNX_MODEL_PATH,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    if result.returncode != 0:
+        raise RuntimeError(f"ONNX inference failed: {result.stderr[-2000:] or result.stdout[-2000:]}")
+    if not os.path.exists(pred_path):
+        raise FileNotFoundError(f"ONNX prediction not found at {pred_path}")
+    return pred_path
 
 
 def _run_nnunet(input_nii_path: str, work_dir: str):
@@ -202,8 +319,38 @@ async def segment(file: UploadFile = File(...)):
             content = await file.read()
             f.write(content)
 
-        # Run inference
-        pred_path = _run_nnunet(input_path, work_dir)
+        backend_used = "nnunet"
+        saved_case = None
+
+        # Run inference with selectable backend
+        if _SEG_BACKEND == "nnunet":
+            pred_path = _run_nnunet(input_path, work_dir)
+            backend_used = "nnunet"
+        elif _SEG_BACKEND in {"open", "open-monai", "monai"}:
+            pred_path = _run_open_brats_infer(input_path, work_dir)
+            backend_used = "open-monai"
+        elif _SEG_BACKEND == "onnx":
+            pred_path = _run_onnx_infer(input_path, work_dir)
+            backend_used = "onnx"
+        else:
+            # auto: try nnunet → onnx → open-monai
+            try:
+                pred_path = _run_nnunet(input_path, work_dir)
+                backend_used = "nnunet"
+            except (FileNotFoundError, RuntimeError):
+                if os.path.isfile(_ONNX_MODEL_PATH):
+                    try:
+                        pred_path = _run_onnx_infer(input_path, work_dir)
+                        backend_used = "onnx"
+                    except (FileNotFoundError, RuntimeError):
+                        pred_path = _run_open_brats_infer(input_path, work_dir)
+                        backend_used = "open-monai"
+                else:
+                    pred_path = _run_open_brats_infer(input_path, work_dir)
+                    backend_used = "open-monai"
+
+        case_id = _new_upload_case_id()
+        saved_case = _persist_uploaded_case(case_id, input_path, pred_path)
 
         # Load volumes
         flair = load_nifti(input_path)
@@ -255,6 +402,8 @@ async def segment(file: UploadFile = File(...)):
             "meta": {
                 "shape": list(flair.shape),
                 "axialMaxZ": axial_max_z,
+                "backend": backend_used,
+                "savedCase": saved_case,
             },
         })
     except Exception as e:

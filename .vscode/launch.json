@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "type": "java",
+            "name": "Spring Boot: MedDemo",
+            "request": "launch",
+            "mainClass": "com.demo.med.MedDemoApplication",
+            "projectName": "demo",
+            "env": {
+                "GEMINI_API_KEY": "AIzaSyDIDQ16D8s59FdcFCQTkPlRISsBgbhrIzM",
+            }
+        }
+    ]
+}

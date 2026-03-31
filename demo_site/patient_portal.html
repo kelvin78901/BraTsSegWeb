@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Patient Portal – Segmentation Demo</title>
+  <style>
+    :root{
+      --bg:#0b1222; --panel:#0f172a; --card:#111827; --card2:#0b1222;
+      --border:#1f2937; --border2:#22314f;
+      --text:#e5e7eb; --muted:#9ca3af; --muted2:#7a8aa6;
+      --accent:#67e8f9; --accent2:#60a5fa; --ok:#34d399; --warn:#fbbf24;
+      --shadow: 0 10px 30px rgba(0,0,0,.28);
+    }
+
+    html,body{font-size:16px;}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:
+        radial-gradient(1200px 600px at 12% 18%, rgba(103,232,249,.14), transparent 60%),
+        radial-gradient(1200px 650px at 88% 24%, rgba(99,102,241,.14), transparent 60%),
+        radial-gradient(1200px 650px at 30% 82%, rgba(16,185,129,.10), transparent 60%),
+        var(--bg);
+      color:var(--text);
+    }
+
+    header{
+      position:sticky;top:0;z-index:20;
+      background: rgba(11,18,34,.86);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid rgba(31,41,55,.85);
+    }
+    .topbar{
+      max-width: min(1760px, 95vw);
+      margin: 0 auto;
+      padding: 12px 16px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .brand{display:flex;align-items:center;gap:10px;min-width:260px}
+    .logo{
+      width:14px;height:14px;border-radius:6px;
+      background: linear-gradient(135deg, rgba(103,232,249,1), rgba(99,102,241,1));
+      box-shadow: 0 0 18px rgba(103,232,249,.28);
+    }
+    .brand h1{margin:0;font-size:15px;line-height:1.2;font-weight:900}
+    .brand .sub{margin:0;color:var(--muted);font-size:12px}
+
+    .controls{
+      display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;
+    }
+
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(103,232,249,.26);
+      background: rgba(103,232,249,.10);
+      color: var(--accent);
+      font-weight:900;font-size:12px;
+      white-space:nowrap;
+    }
+    .dot{width:8px;height:8px;border-radius:999px;background:var(--ok); box-shadow:0 0 10px rgba(52,211,153,.35)}
+    .dot.off{background:#64748b; box-shadow:none}
+
+    label{font-size:12px;color:var(--muted);font-weight:900}
+    select,input,button{
+      background:#0b1222;
+      color:var(--text);
+      border:1px solid rgba(31,42,68,.85);
+      border-radius:12px;
+      padding:8px 10px;
+      font-size:14px;
+    }
+    button{
+      cursor:pointer;
+      font-weight:900;
+      transition: transform .08s ease, background .15s ease, border-color .15s ease;
+    }
+    button:hover{transform: translateY(-1px); border-color: rgba(103,232,249,.45)}
+    button.primary{
+      background: linear-gradient(135deg, rgba(103,232,249,.16), rgba(99,102,241,.16));
+      border-color: rgba(103,232,249,.35);
+    }
+    button.ghost{
+      background: transparent;
+    }
+    input[type="range"]{padding:0; height:28px}
+
+    main{
+      max-width: min(1760px, 95vw);
+      margin: 0 auto;
+      padding: 14px 16px 30px;
+      min-height: calc(100vh - 64px);
+      align-content: start;
+      display:grid;
+      gap:12px;
+    }
+
+    .grid2{
+      display:grid;
+      grid-template-columns: 1.9fr 1.1fr; /* wider content area */
+      gap:12px;
+      align-items:start;
+    }
+
+    .card{
+      background: rgba(17,24,39,.86);
+      border:1px solid rgba(31,42,68,.85);
+      border-radius:14px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:12px 12px 0;
+      display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    }
+    .card .hd h2{
+      margin:0;
+      font-size:14px;
+      font-weight:1000;
+      letter-spacing:.2px;
+    }
+    .card .hd .meta{
+      color:var(--muted);
+      font-size:12px;
+      display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+    }
+    .card .bd{padding:12px}
+    .divider{height:1px;background:rgba(31,42,68,.65);margin:10px 0}
+
+    /* left column sections */
+    .summaryGrid{
+      display:grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap:12px;
+    }
+    .kvs{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(160px,1fr));
+      gap:10px;
+    }
+    .kv{
+      background: rgba(11,18,34,.75);
+      border:1px solid rgba(31,42,68,.75);
+      border-radius:12px;
+      padding:10px;
+    }
+    .kv .k{font-size:11px;color:var(--muted);font-weight:900;letter-spacing:.2px}
+    .kv .v{font-size:14px;font-weight:1000;margin-top:4px}
+    .tag{
+      display:inline-flex;align-items:center;
+      padding:4px 10px;border-radius:999px;
+      font-size:11px;font-weight:900;
+      border:1px solid rgba(31,42,68,.85);
+      background: rgba(11,18,34,.75);
+      color: var(--muted2);
+      white-space:nowrap;
+    }
+    .tag.ok{border-color: rgba(52,211,153,.30); color: rgba(52,211,153,.95); background: rgba(52,211,153,.08)}
+    .tag.warn{border-color: rgba(251,191,36,.30); color: rgba(251,191,36,.95); background: rgba(251,191,36,.08)}
+    .tag.blue{border-color: rgba(96,165,250,.30); color: rgba(96,165,250,.95); background: rgba(96,165,250,.08)}
+
+    /* preview */
+    .previewGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      align-items:start;
+    }
+    .canvasWrap{
+      background: rgba(11,18,34,.75);
+      border:1px solid rgba(31,42,68,.75);
+      border-radius:14px;
+      padding:10px;
+    }
+    .canvasTitle{
+      display:flex;justify-content:space-between;align-items:center;gap:10px;
+      margin:0 0 8px 0;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:900;
+    }
+    canvas{
+      width:100%;
+      height: 520px; /* bigger for demo */
+      display:block;
+      border-radius: 12px;
+      border: 1px solid rgba(31,42,68,.85);
+      background: #050a14;
+      image-rendering: auto;
+    }
+    .help{
+      margin-top:8px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+
+    .rightStack{
+      display:grid;
+      gap:12px;
+      position: sticky;
+      top: 76px;
+      align-self:start;
+    }
+
+    .metricsGrid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap:10px;
+    }
+    .metricBox{
+      background: rgba(11,18,34,.75);
+      border:1px solid rgba(31,42,68,.75);
+      border-radius:12px;
+      padding:10px;
+    }
+    .metricBox .t{font-size:11px;color:var(--muted);font-weight:900}
+    .metricBox .v{font-size:18px;font-weight:1000;margin-top:6px}
+    .metricBox .s{font-size:11px;color:var(--muted2);margin-top:4px}
+
+    .chatWrap{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .chatBox{
+      height: 360px;             /* fixed length */
+      overflow:auto;             /* scrollable */
+      padding:10px;
+      border-radius:12px;
+      border:1px solid rgba(31,42,68,.75);
+      background: rgba(11,18,34,.75);
+      scroll-behavior: smooth;
+    }
+    .msg{
+      display:flex;
+      gap:10px;
+      margin: 8px 0;
+      align-items:flex-start;
+    }
+    .avatar{
+      width:28px;height:28px;border-radius:10px;
+      background: rgba(103,232,249,.14);
+      border:1px solid rgba(103,232,249,.22);
+      display:flex;align-items:center;justify-content:center;
+      color: var(--accent);
+      font-weight:1000;
+      flex:0 0 auto;
+      font-size:12px;
+    }
+    .avatar.user{
+      background: rgba(96,165,250,.14);
+      border-color: rgba(96,165,250,.22);
+      color: var(--accent2);
+    }
+    .bubble{
+      max-width: 100%;
+      background: rgba(17,24,39,.70);
+      border:1px solid rgba(31,42,68,.65);
+      border-radius:12px;
+      padding:9px 10px;
+      line-height:1.35;
+      font-size:14px;
+    }
+    .bubble .meta{display:block;color:var(--muted);font-size:11px;margin-bottom:4px;font-weight:900}
+    .chatInputRow{
+      display:flex;gap:10px;align-items:center;
+    }
+    .chatInputRow input{
+      flex:1;
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:14px;
+    }
+
+    .foot{
+      color: rgba(156,163,175,.85);
+      font-size:11px;
+      text-align:center;
+      padding: 6px 0 2px;
+    }
+
+    /* responsive */
+    @media (max-width: 1180px){
+      .grid2{grid-template-columns: 1fr}
+      .rightStack{position: static}
+      .summaryGrid{grid-template-columns: 1fr}
+      canvas{height: 460px}
+      .chatBox{height: 320px}
+    }
+    @media (max-width: 820px){
+      .previewGrid{grid-template-columns: 1fr}
+      canvas{height: 420px}
+      .metricsGrid{grid-template-columns: 1fr}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Patient Portal – Segmentation Demo</h1>
+        <div class="sub">Static showcase using local NIfTI/metrics assets (no backend)</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <span class="pill"><span id="assetDot" class="dot off"></span><span id="assetStatus">Local assets: checking…</span></span>
+
+      <label>Case</label>
+      <select id="caseSelect"></select>
+
+      <label>Modality</label>
+      <select id="modSelect">
+        <option value="flair">FLAIR</option>
+        <option value="t1">T1</option>
+        <option value="t1ce">T1CE</option>
+        <option value="t2">T2</option>
+      </select>
+
+      <button id="btnExplorer" class="primary">Open Explorer</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid2">
+
+    <!-- LEFT COLUMN -->
+    <div class="leftCol">
+      <section class="card">
+        <div class="hd">
+          <h2>Brain Tumor Segmentation (Demo)</h2>
+          <div class="meta">
+            <span class="tag blue">BraTS 2021</span>
+            <span class="tag ok" id="segTag">Segmentation: Ready</span>
+            <span class="tag" id="caseTag">—</span>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="summaryGrid">
+            <div class="card" style="background:transparent;border-color:rgba(31,42,68,.55);box-shadow:none">
+              <div class="bd" style="padding:10px">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+                  <div>
+                    <div style="font-weight:1000;font-size:13px">Auto Slice Preview (CT/MRI volume)</div>
+                    <div style="color:var(--muted);font-size:12px;margin-top:4px">
+                      Auto-play scans through slices for presentation. You can pause and fine-tune window/level + overlay.
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <button id="btnMetrics" class="ghost">Open metrics.json</button>
+                    <button id="btnJump" class="ghost">Jump to Preview</button>
+                    <button id="btnPlay" class="primary">Auto Play</button>
+                    <button id="btnStop" class="ghost">Stop</button>
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                  <label>Slice (axial)</label>
+                  <input id="sliceRange" type="range" min="0" max="10" value="0" style="width:260px"/>
+                  <span id="sliceLabel" style="color:var(--muted);font-size:12px;font-weight:900">—</span>
+
+                  <label>Speed</label>
+                  <input id="speedRange" type="range" min="20" max="220" value="90" />
+                  <span id="speedLabel" style="color:var(--muted);font-size:12px;font-weight:900">90ms</span>
+
+                  <label>Overlay</label>
+                  <input id="alphaRange" type="range" min="0" max="1" step="0.05" value="0.45"/>
+                  <span id="alphaLabel" style="color:var(--muted);font-size:12px;font-weight:900">0.45</span>
+
+                  <label>WL</label>
+                  <input id="wlCenter" type="range" min="-1" max="1" step="0.01" value="0.0"/>
+                  <span id="wlCenterLabel" style="color:var(--muted);font-size:12px;font-weight:900">Center 0.00</span>
+
+                  <label>Strength</label>
+                  <input id="wlStrength" type="range" min="0.05" max="2.5" step="0.05" value="1.00"/>
+                  <span id="wlStrengthLabel" style="color:var(--muted);font-size:12px;font-weight:900">1.00×</span>
+
+                  <button id="btnResetWL" class="ghost">Reset</button>
+                </div>
+
+                <div class="help" id="dataHint">Data source: <code>/data/index.json</code> and <code>/data/&lt;case&gt;/{flair,t1,t1ce,t2,gt,pred}.nii.gz</code></div>
+              </div>
+            </div>
+
+            <div class="card" style="background:transparent;border-color:rgba(31,42,68,.55);box-shadow:none">
+              <div class="bd" style="padding:10px">
+                <div style="font-weight:1000;font-size:13px;margin-bottom:8px">Visit History</div>
+                <div style="display:grid;gap:10px">
+                  <div class="kv">
+                    <div class="k">2026-01-10 • Neurosurgery Follow-up</div>
+                    <div class="v" style="font-size:13px;font-weight:900;color:var(--muted2)">
+                      Review symptoms and imaging; discuss treatment plan and monitoring.
+                    </div>
+                  </div>
+                  <div class="kv">
+                    <div class="k">2026-01-05 • Radiology</div>
+                    <div class="v" style="font-size:13px;font-weight:900;color:var(--muted2)">
+                      Imaging acquired; segmentation outputs generated offline for demo.
+                    </div>
+                  </div>
+                  <div style="color:var(--muted);font-size:12px">
+                    Tip for presentation: keep auto-play on, then open Explorer for 3-view + ROI.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="previewSection">
+        <div class="hd">
+          <h2>Imaging Preview</h2>
+          <div class="meta">
+            <span id="previewMeta">—</span>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="previewGrid">
+            <div class="canvasWrap">
+              <div class="canvasTitle">
+                <span>Raw Slice Preview</span>
+                <span class="tag" id="rawInfo">—</span>
+              </div>
+              <canvas id="cRaw" width="512" height="512"></canvas>
+              <div class="help">Rendered from NIfTI volume (axial slice). Window/level is applied for better visibility.</div>
+            </div>
+
+            <div class="canvasWrap">
+              <div class="canvasTitle">
+                <span>Prediction Overlay Preview</span>
+                <span class="tag" id="ovInfo">Overlay α=<span id="ovAlpha">0.45</span></span>
+              </div>
+              <canvas id="cOv" width="512" height="512"></canvas>
+              <div class="help">Overlay labels: 1/2/4 (BraTS). Use Overlay slider to adjust opacity.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="foot">Built for group meeting demo • Local static assets • No backend required</div>
+    </div>
+
+    <div class="rightStack">
+
+      <section class="card">
+        <div class="hd">
+          <h2>Patient Profile</h2>
+          <div class="meta"><span class="tag ok" id="statusTag">Follow-up</span></div>
+        </div>
+        <div class="bd">
+          <div class="kvs">
+            <div class="kv"><div class="k">PATIENT ID</div><div class="v" id="pId">P001</div></div>
+            <div class="kv"><div class="k">NAME</div><div class="v">John Doe</div></div>
+            <div class="kv"><div class="k">SEX</div><div class="v">Male</div></div>
+            <div class="kv"><div class="k">AGE</div><div class="v">54</div></div>
+            <div class="kv"><div class="k">PRIMARY CONCERN</div><div class="v">Headache</div></div>
+            <div class="kv"><div class="k">STUDY</div><div class="v">Brain MRI (BraTS demo case)</div></div>
+          </div>
+          <div class="help" style="margin-top:10px">
+            Disclaimer: This is a research demo UI. It does not provide medical diagnosis.
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="hd">
+          <h2>Segmentation Metrics (WT / TC / ET)</h2>
+          <div class="meta"><span class="tag" id="metricHint">—</span></div>
+        </div>
+        <div class="bd">
+          <div class="metricsGrid" id="metricsGrid">
+            <div class="metricBox">
+              <div class="t">WT Dice</div>
+              <div class="v" id="mWT">—</div>
+              <div class="s" id="mWTi">IoU —</div>
+            </div>
+            <div class="metricBox">
+              <div class="t">TC Dice</div>
+              <div class="v" id="mTC">—</div>
+              <div class="s" id="mTCi">IoU —</div>
+            </div>
+            <div class="metricBox">
+              <div class="t">ET Dice</div>
+              <div class="v" id="mET">—</div>
+              <div class="s" id="mETi">IoU —</div>
+            </div>
+          </div>
+          <div class="help" id="metricHelp" style="margin-top:10px">
+            Metrics are loaded from <code>/data/&lt;case&gt;/metrics.json</code>.
+          </div>
+        </div>
+      </section>
+
+      <!-- AI Agent moved to RIGHT -->
+      <section class="card">
+        <div class="hd">
+          <h2>AI Agent (Demo)</h2>
+          <div class="meta"><span class="tag">No backend</span></div>
+        </div>
+        <div class="bd chatWrap">
+          <div class="help" style="margin:0">
+            Ask the agent to summarize segmentation and highlight metrics. (Local demo mode: rule-based responses.)
+          </div>
+
+          <div id="chatBox" class="chatBox" aria-label="chat conversation"></div>
+
+          <div class="chatInputRow">
+            <input id="chatInput" placeholder='Try: "Summarize WT/TC/ET dice" or "What does auto play show?"' />
+            <button id="chatSend" class="primary">Send</button>
+          </div>
+
+          <div class="help" style="margin:0">
+            The chat panel has a fixed height, scrolls automatically, and always keeps the newest messages visible.
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="hd">
+          <h2>System Log</h2>
+          <div class="meta"><span class="tag" id="logTag">Idle</span></div>
+        </div>
+        <div class="bd">
+          <div id="log" style="white-space:pre-wrap;color:var(--muted);font-size:12px;line-height:1.35">Ready.</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<script src="./nifti-reader.js"></script>
+
+<script>
+
+if (!window.nifti) {
+  throw new Error("nifti-reader.js loaded, but window.nifti is missing. Use the UMD build that exposes global window.nifti.");
+}
+const nifti = window.nifti;
+
+const el = (id)=>document.getElementById(id);
+
+const assetDot = el("assetDot");
+const assetStatus = el("assetStatus");
+
+const caseSelect = el("caseSelect");
+const modSelect = el("modSelect");
+const btnExplorer = el("btnExplorer");
+const btnMetrics = el("btnMetrics");
+const btnJump = el("btnJump");
+
+const btnPlay = el("btnPlay");
+const btnStop = el("btnStop");
+const sliceRange = el("sliceRange");
+const sliceLabel = el("sliceLabel");
+const speedRange = el("speedRange");
+const speedLabel = el("speedLabel");
+const alphaRange = el("alphaRange");
+const alphaLabel = el("alphaLabel");
+const wlCenter = el("wlCenter");
+const wlCenterLabel = el("wlCenterLabel");
+const wlStrength = el("wlStrength");
+const wlStrengthLabel = el("wlStrengthLabel");
+const btnResetWL = el("btnResetWL");
+
+const segTag = el("segTag");
+const caseTag = el("caseTag");
+const previewMeta = el("previewMeta");
+const rawInfo = el("rawInfo");
+const ovInfo = el("ovInfo");
+const ovAlpha = el("ovAlpha");
+
+const cRaw = el("cRaw");
+const cOv = el("cOv");
+
+const metricHint = el("metricHint");
+const metricHelp = el("metricHelp");
+const mWT = el("mWT"), mTC = el("mTC"), mET = el("mET");
+const mWTi = el("mWTi"), mTCi = el("mTCi"), mETi = el("mETi");
+
+const log = el("log");
+const logTag = el("logTag");
+
+const chatBox = el("chatBox");
+const chatInput = el("chatInput");
+const chatSend = el("chatSend");
+
+let currentCase = null;
+let volMRI = null, volPR = null;
+let autoplayTimer = null;
+
+const labelColor = {
+  0: [0,0,0,0],
+  1: [255, 99, 132, 170],
+  2: [94, 234, 212, 170],
+  4: [99, 102, 241, 170]
+};
+
+function setLog(text, tag="Idle"){
+  log.textContent = text;
+  logTag.textContent = tag;
+}
+
+function fmt4(x){
+  return (typeof x === "number" && isFinite(x)) ? x.toFixed(4) : "—";
+}
+
+function idx3(x,y,z,X,Y){ return x + y*X + z*X*Y; }
+
+function getAxialSlice(vol, z){
+  const {data, dims:[X,Y,Z]} = vol;
+  const out = new Float32Array(X*Y);
+  let p=0;
+  for (let y=0;y<Y;y++){
+    for (let x=0;x<X;x++){
+      out[p++] = data[idx3(x,y,z,X,Y)];
+    }
+  }
+  return {w:X,h:Y,arr:out};
+}
+
+function toLabelU8(floatArr){
+  const out = new Uint8ClampedArray(floatArr.length);
+  for (let i=0;i<floatArr.length;i++) out[i] = Math.round(floatArr[i]);
+  return out;
+}
+
+function percentile(arr, p){
+  if (!arr || arr.length === 0) return 0;
+  const a = Array.from(arr);
+  a.sort((x,y)=>x-y);
+  const idx = Math.min(a.length-1, Math.max(0, Math.floor(p*(a.length-1))));
+  return a[idx];
+}
+
+function applyWindowLevelToGray(sliceF32){
+  const p2 = percentile(sliceF32, 0.02);
+  const p98 = percentile(sliceF32, 0.98);
+  let center = (p2 + p98) / 2;
+  let width = Math.max(1e-6, (p98 - p2));
+
+  const cShift = parseFloat(wlCenter.value) * width * 0.65;
+  const strength = parseFloat(wlStrength.value);
+  center = center + cShift;
+  width = width / Math.max(0.05, strength);
+
+  const lo = center - width/2;
+  const hi = center + width/2;
+
+  const out = new Uint8ClampedArray(sliceF32.length);
+  const inv = 255 / Math.max(1e-6, (hi - lo));
+  for (let i=0;i<sliceF32.length;i++){
+    let g = (sliceF32[i] - lo) * inv;
+    if (g < 0) g = 0;
+    if (g > 255) g = 255;
+    out[i] = g;
+  }
+  return out;
+}
+
+function drawGray(canvas, w, h, grayU8){
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(w,h);
+  for (let i=0;i<grayU8.length;i++){
+    const b = i*4, g = grayU8[i];
+    img.data[b] = g;
+    img.data[b+1] = g;
+    img.data[b+2] = g;
+    img.data[b+3] = 255;
+  }
+  ctx.putImageData(img,0,0);
+  return img;
+}
+
+function overlayLabels(img, maskU8, alpha){
+  for (let i=0;i<maskU8.length;i++){
+    const m = maskU8[i];
+    if (!m) continue;
+    const c = labelColor[m];
+    if (!c) continue;
+    const b = i*4;
+    img.data[b]   = (1-alpha)*img.data[b]   + alpha*c[0];
+    img.data[b+1] = (1-alpha)*img.data[b+1] + alpha*c[1];
+    img.data[b+2] = (1-alpha)*img.data[b+2] + alpha*c[2];
+  }
+}
+
+
+async function fetchNifti(url){
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Fetch failed: ${url} (${resp.status})`);
+  let raw = await resp.arrayBuffer();
+  if (nifti.isCompressed(raw)) raw = nifti.decompress(raw);
+  if (!nifti.isNIFTI(raw)) throw new Error(`Not a valid NIfTI: ${url}`);
+
+  const header = nifti.readHeader(raw);
+  const imgBuf = nifti.readImage(header, raw);
+
+  const dims = [header.dims[1], header.dims[2], header.dims[3]]; // X,Y,Z
+  const code = header.datatypeCode;
+
+  let typed;
+  if (code === nifti.NIFTI1.TYPE_UINT8) typed = new Uint8Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_INT16) typed = new Int16Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_INT32) typed = new Int32Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_FLOAT32) typed = new Float32Array(imgBuf);
+  else if (code === nifti.NIFTI1.TYPE_FLOAT64) typed = new Float64Array(imgBuf);
+  else typed = new Uint8Array(imgBuf);
+
+  const slope = (header.scl_slope === 0 || header.scl_slope == null) ? 1.0 : header.scl_slope;
+  const inter = header.scl_inter || 0.0;
+
+  const data = new Float32Array(typed.length);
+  for (let i=0;i<typed.length;i++) data[i] = typed[i]*slope + inter;
+
+  return {data, dims, header};
+}
+
+
+async function loadMetrics(caseId){
+  const url = `/data/${caseId}/metrics.json`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  return await resp.json();
+}
+
+function normalizeMetricsShape(m){
+
+  if (!m) return null;
+
+  if (m.regions && m.regions.WT) return m;
+
+  const regions = {
+    WT: { dice: m.WT_dice, iou: m.WT_iou },
+    TC: { dice: m.TC_dice, iou: m.TC_iou },
+    ET: { dice: m.ET_dice, iou: m.ET_iou },
+  };
+  return { case: m.case || currentCase, regions, raw: m };
+}
+
+function renderMetrics(m){
+  const mm = normalizeMetricsShape(m);
+  if (!mm || !mm.regions || !mm.regions.WT){
+    metricHint.textContent = "metrics.json not found / invalid";
+    mWT.textContent = "—"; mTC.textContent = "—"; mET.textContent = "—";
+    mWTi.textContent = "IoU —"; mTCi.textContent = "IoU —"; mETi.textContent = "IoU —";
+    return;
+  }
+
+  metricHint.textContent = `${mm.case || currentCase} · WT/TC/ET`;
+  mWT.textContent = fmt4(mm.regions.WT.dice);
+  mTC.textContent = fmt4(mm.regions.TC.dice);
+  mET.textContent = fmt4(mm.regions.ET.dice);
+  mWTi.textContent = `IoU ${fmt4(mm.regions.WT.iou)}`;
+  mTCi.textContent = `IoU ${fmt4(mm.regions.TC.iou)}`;
+  mETi.textContent = `IoU ${fmt4(mm.regions.ET.iou)}`;
+
+  if (mm.raw && typeof mm.raw.gt_nonzero_voxels === "number"){
+    metricHelp.innerHTML =
+      `Metrics loaded from <code>/data/${currentCase}/metrics.json</code> · ` +
+      `GT voxels: <b>${mm.raw.gt_nonzero_voxels}</b> · Pred voxels: <b>${mm.raw.pred_nonzero_voxels}</b>`;
+  } else {
+    metricHelp.innerHTML = `Metrics loaded from <code>/data/${currentCase}/metrics.json</code>.`;
+  }
+}
+
+
+function renderSlice(){
+  if (!volMRI || !volPR) return;
+
+  const [X,Y,Z] = volMRI.dims;
+  const maxZ = Z - 1;
+
+  sliceRange.max = maxZ;
+  let z = Math.min(maxZ, Math.max(0, parseInt(sliceRange.value,10) || 0));
+  sliceRange.value = String(z);
+
+  const mod = modSelect.value.toUpperCase();
+  sliceLabel.textContent = `z=${z}/${maxZ}`;
+  alphaLabel.textContent = alphaRange.value;
+  ovAlpha.textContent = alphaRange.value;
+
+  const mri = getAxialSlice(volMRI, z);
+  const pr  = getAxialSlice(volPR, z);
+
+  const gray = applyWindowLevelToGray(mri.arr);
+  const prU8 = toLabelU8(pr.arr);
+
+  // raw
+  drawGray(cRaw, mri.w, mri.h, gray);
+
+  // overlay
+  const img = drawGray(cOv, mri.w, mri.h, gray);
+  overlayLabels(img, prU8, parseFloat(alphaRange.value));
+  cOv.getContext("2d").putImageData(img,0,0);
+
+  rawInfo.textContent = `${mod} · axial z=${z}`;
+  previewMeta.textContent = `${currentCase} · ${mod} · axial z=${z}`;
+}
+
+async function loadCase(caseId){
+  currentCase = caseId;
+  caseTag.textContent = caseId ? `Case: ${caseId}` : "—";
+  segTag.textContent = "Segmentation: Loading…";
+  segTag.className = "tag warn";
+  setLog(`Loading volumes for ${caseId}…`, "Loading");
+
+  const mod = modSelect.value;
+
+  const mriUrl = `/data/${caseId}/${mod}.nii.gz`;
+  const prUrl  = `/data/${caseId}/pred.nii.gz`;
+
+  try{
+    const [mri, pr] = await Promise.all([fetchNifti(mriUrl), fetchNifti(prUrl)]);
+    volMRI = mri;
+    volPR = pr;
+
+    // slice defaults
+    sliceRange.max = Math.max(0, mri.dims[2]-1);
+    sliceRange.value = String(Math.floor(mri.dims[2]*0.55));
+
+    // load metrics (optional)
+    const metrics = await loadMetrics(caseId);
+    renderMetrics(metrics);
+
+    // status
+    assetDot.classList.remove("off");
+    assetStatus.textContent = "Local assets: ready";
+    segTag.textContent = "Segmentation: Completed";
+    segTag.className = "tag ok";
+    setLog(`Loaded MRI dims=${mri.dims.join("×")} · Pred dims=${pr.dims.join("×")}`, "Ready");
+
+    renderSlice();
+  } catch(e){
+    segTag.textContent = "Segmentation: Error";
+    segTag.className = "tag warn";
+    assetDot.classList.add("off");
+    assetStatus.textContent = "Local assets: error";
+    setLog(String(e), "Error");
+    console.error(e);
+  }
+}
+
+async function reloadCaseList(){
+  setLog("Loading case list…", "Loading");
+  const resp = await fetch("/data/index.json");
+  if (!resp.ok) throw new Error("index.json not found. Ensure /data/index.json exists.");
+  const cases = await resp.json();
+
+  caseSelect.innerHTML = "";
+  for (const c of cases){
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    caseSelect.appendChild(opt);
+  }
+
+  if (cases.length){
+    caseSelect.value = cases[0];
+    await loadCase(cases[0]);
+  }
+
+  setLog(`Case list loaded (${cases.length}).`, "Ready");
+}
+
+
+function stopAutoplay(){
+  if (autoplayTimer){
+    clearInterval(autoplayTimer);
+    autoplayTimer = null;
+  }
+  btnPlay.textContent = "Auto Play";
+  setLog("Autoplay stopped.", "Ready");
+}
+
+function startAutoplay(){
+  stopAutoplay();
+  btnPlay.textContent = "Playing…";
+  setLog("Autoplay running (axial slice).", "Playing");
+
+  autoplayTimer = setInterval(()=>{
+    const maxZ = parseInt(sliceRange.max,10) || 0;
+    let z = parseInt(sliceRange.value,10) || 0;
+    z = (z + 1) % Math.max(1, (maxZ+1));
+    sliceRange.value = String(z);
+    renderSlice();
+  }, parseInt(speedRange.value,10));
+}
+
+function scrollChatToBottom(){
+  // ensure layout settled
+  requestAnimationFrame(()=>{
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
+}
+
+function addMessage(role, text){
+  const wrap = document.createElement("div");
+  wrap.className = "msg";
+
+  const av = document.createElement("div");
+  av.className = "avatar " + (role === "user" ? "user" : "agent");
+  av.textContent = role === "user" ? "U" : "AI";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const meta = document.createElement("span");
+  meta.className = "meta";
+  meta.textContent = role === "user" ? "You" : "Agent (demo)";
+  const body = document.createElement("div");
+  body.textContent = text;
+
+  bubble.appendChild(meta);
+  bubble.appendChild(body);
+
+  wrap.appendChild(av);
+  wrap.appendChild(bubble);
+
+  chatBox.appendChild(wrap);
+  scrollChatToBottom();
+}
+
+function agentReply(userText){
+  const t = (userText || "").toLowerCase();
+
+  // metrics summary
+  const wt = mWT.textContent, tc = mTC.textContent, et = mET.textContent;
+  const haveMetrics = wt !== "—" && tc !== "—" && et !== "—";
+
+  if (t.includes("summarize") || t.includes("metric") || t.includes("dice") || t.includes("wt") || t.includes("tc") || t.includes("et")){
+    if (haveMetrics){
+      return `For case ${currentCase}, Dice scores are: WT=${wt}, TC=${tc}, ET=${et}. ` +
+             `WT reflects the whole tumor region, TC reflects tumor core, and ET reflects enhancing tumor. ` +
+             `If TC/ET are low, it often indicates under-segmentation of small/high-grade subregions.`;
+    }
+    return `Metrics are not available yet. Please ensure /data/${currentCase}/metrics.json exists, then reload the case.`;
+  }
+
+  if (t.includes("auto") || t.includes("play")){
+    return `Auto Play cycles through axial slices automatically to quickly showcase anatomy and segmentation changes across the volume. ` +
+           `You can pause and switch modality (FLAIR/T1/T1CE/T2), then open Explorer for 3-view + ROI.`;
+  }
+
+  if (t.includes("overlay") || t.includes("opacity")){
+    return `Use the Overlay slider to adjust mask visibility. Lower opacity helps inspect brain details; higher opacity highlights tumor regions.`;
+  }
+
+  if (t.includes("wl") || t.includes("window") || t.includes("contrast") || t.includes("brightness")){
+    return `Window/Level is applied automatically using robust percentiles (p2–p98). ` +
+           `You can fine-tune with Center (shifts) and Strength (contrast). Click Reset to return to defaults.`;
+  }
+
+  return `I can summarize metrics (WT/TC/ET), explain Auto Play, or guide you to the Explorer view. Try: "Summarize WT/TC/ET dice".`;
+}
+
+
+btnExplorer.addEventListener("click", ()=>{
+  const c = encodeURIComponent(caseSelect.value || "");
+  const url = `./explorer.html?case=${c}`;
+  window.open(url, "_blank");
+});
+
+btnMetrics.addEventListener("click", ()=>{
+  if (!currentCase) return;
+  window.open(`/data/${currentCase}/metrics.json`, "_blank");
+});
+
+btnJump.addEventListener("click", ()=>{
+  el("previewSection").scrollIntoView({behavior:"smooth", block:"start"});
+});
+
+caseSelect.addEventListener("change", ()=>loadCase(caseSelect.value));
+modSelect.addEventListener("change", ()=>loadCase(caseSelect.value));
+
+[sliceRange, alphaRange, wlCenter, wlStrength].forEach(x => x.addEventListener("input", ()=>{
+  alphaLabel.textContent = alphaRange.value;
+  ovAlpha.textContent = alphaRange.value;
+  wlCenterLabel.textContent = `Center ${parseFloat(wlCenter.value).toFixed(2)}`;
+  wlStrengthLabel.textContent = `${parseFloat(wlStrength.value).toFixed(2)}×`;
+  renderSlice();
+}));
+
+speedRange.addEventListener("input", ()=>{
+  speedLabel.textContent = `${speedRange.value}ms`;
+  if (autoplayTimer){
+    startAutoplay(); // restart with new speed
+  }
+});
+
+btnResetWL.addEventListener("click", ()=>{
+  wlCenter.value = "0.0";
+  wlStrength.value = "1.00";
+  wlCenterLabel.textContent = `Center 0.00`;
+  wlStrengthLabel.textContent = `1.00×`;
+  renderSlice();
+});
+
+btnPlay.addEventListener("click", ()=>{
+  if (autoplayTimer) stopAutoplay();
+  else startAutoplay();
+});
+btnStop.addEventListener("click", stopAutoplay);
+
+/* chat */
+function sendChat(){
+  const text = (chatInput.value || "").trim();
+  if (!text) return;
+  chatInput.value = "";
+  addMessage("user", text);
+
+  // tiny delay to feel like a response
+  setTimeout(()=>{
+    addMessage("agent", agentReply(text));
+  }, 150);
+}
+chatSend.addEventListener("click", sendChat);
+chatInput.addEventListener("keydown", (e)=>{
+  if (e.key === "Enter") sendChat();
+});
+
+(function init(){
+  // default WL labels
+  wlCenterLabel.textContent = `Center ${parseFloat(wlCenter.value).toFixed(2)}`;
+  wlStrengthLabel.textContent = `${parseFloat(wlStrength.value).toFixed(2)}×`;
+  speedLabel.textContent = `${speedRange.value}ms`;
+  alphaLabel.textContent = alphaRange.value;
+  ovAlpha.textContent = alphaRange.value;
+
+  addMessage("agent", "Hi! I can summarize segmentation metrics (WT/TC/ET) and explain what you see in the preview. Try: “Summarize WT/TC/ET dice.”");
+
+  reloadCaseList()
+    .then(()=> {
+      assetDot.classList.remove("off");
+      assetStatus.textContent = "Local assets: ready";
+    })
+    .catch(e=>{
+      assetDot.classList.add("off");
+      assetStatus.textContent = "Local assets: missing";
+      setLog(String(e), "Error");
+      console.error(e);
+    });
+})();
+</script>
+</body>
+</html>

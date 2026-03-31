@@ -74,7 +74,7 @@ public class AuthController {
 
       // Call Python sidecar /segment endpoint
       String sidecarUrl = System.getenv("SIDECAR_URL");
-      if (sidecarUrl == null || sidecarUrl.isBlank()) sidecarUrl = "http://127.0.0.1:8000";
+      if (sidecarUrl == null || sidecarUrl.isBlank()) sidecarUrl = "http://127.0.0.1:5000";
       URL url = new URL(sidecarUrl + "/segment");
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
       conn.setRequestMethod("POST");

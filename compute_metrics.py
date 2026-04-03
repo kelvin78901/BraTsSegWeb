@@ -1,26 +1,15 @@
-# compute_metrics.py
-# -*- coding: utf-8 -*-
-
 import json
 from pathlib import Path
 
 import numpy as np
 import nibabel as nib
 
-# optional but recommended for csv
 import pandas as pd
-
 
 THIS_DIR = Path(__file__).resolve().parent
 VIEWER_DIR = THIS_DIR / "viewer"
 CASES_DIR = VIEWER_DIR / "cases"
 INDEX_JSON = CASES_DIR / "index.json"
-
-# BraTS derived regions
-# WT = whole tumor = 1|2|4
-# TC = tumor core = 1|4
-# ET = enhancing tumor = 4
-
 
 def load_nii(path: Path) -> np.ndarray:
     img = nib.load(str(path))
@@ -29,7 +18,6 @@ def load_nii(path: Path) -> np.ndarray:
         raise ValueError(f"Expected 3D nifti, got shape={data.shape} from {path}")
     return data
 
-
 def bin_mask(seg: np.ndarray, labels) -> np.ndarray:
     labels = list(labels)
     m = np.zeros(seg.shape, dtype=bool)
@@ -37,9 +25,8 @@ def bin_mask(seg: np.ndarray, labels) -> np.ndarray:
         m |= (seg == lb)
     return m
 
-
 def dice_iou(a: np.ndarray, b: np.ndarray):
-    # a,b: bool arrays
+
     a = a.astype(bool)
     b = b.astype(bool)
     inter = np.logical_and(a, b).sum(dtype=np.int64)
@@ -47,14 +34,12 @@ def dice_iou(a: np.ndarray, b: np.ndarray):
     sb = b.sum(dtype=np.int64)
     union = np.logical_or(a, b).sum(dtype=np.int64)
 
-    # define: if both empty => perfect
     if sa == 0 and sb == 0:
         return 1.0, 1.0
 
     dice = (2.0 * inter) / (sa + sb + 1e-8)
     iou = inter / (union + 1e-8)
     return float(dice), float(iou)
-
 
 def compute_one_case(gt_path: Path, pred_path: Path):
     gt = load_nii(gt_path).astype(np.int16)
@@ -65,7 +50,6 @@ def compute_one_case(gt_path: Path, pred_path: Path):
 
     metrics = {}
 
-    # per label
     for lb in [1, 2, 4]:
         g = (gt == lb)
         p = (pred == lb)
@@ -73,7 +57,6 @@ def compute_one_case(gt_path: Path, pred_path: Path):
         metrics[f"label_{lb}_dice"] = d
         metrics[f"label_{lb}_iou"] = j
 
-    # BraTS regions
     wt_g = bin_mask(gt, [1, 2, 4])
     wt_p = bin_mask(pred, [1, 2, 4])
     d, j = dice_iou(wt_g, wt_p)
@@ -92,12 +75,10 @@ def compute_one_case(gt_path: Path, pred_path: Path):
     metrics["ET_dice"] = d
     metrics["ET_iou"] = j
 
-    # voxel counts (handy for debugging)
     metrics["gt_nonzero_voxels"] = int((gt != 0).sum())
     metrics["pred_nonzero_voxels"] = int((pred != 0).sum())
 
     return metrics
-
 
 def main():
     if not INDEX_JSON.exists():
@@ -125,7 +106,6 @@ def main():
             print(f"[ERR ] {cid}: {e}")
             continue
 
-        # save per-case metrics.json
         out_json = case_dir / "metrics.json"
         out_json.write_text(json.dumps(m, indent=2), encoding="utf-8")
         print(f"[OK  ] {cid}: wrote {out_json.name}")
@@ -139,7 +119,6 @@ def main():
 
     df = pd.DataFrame(rows).sort_values("case_id")
 
-    # summary stats
     summary = {}
     for col in df.columns:
         if col == "case_id":
@@ -159,7 +138,6 @@ def main():
     print(f"- Per-case: viewer/cases/<CASE_ID>/metrics.json")
     print(f"- Summary : viewer/cases/metrics_summary.json")
     print(f"- CSV     : viewer/cases/metrics_summary.csv")
-
 
 if __name__ == "__main__":
     main()

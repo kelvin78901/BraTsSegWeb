@@ -1,6 +1,8 @@
 package com.demo.med.agent;
 
 import com.demo.med.auth.DemoUser;
+import com.demo.med.auth.RequireRole;
+import com.demo.med.config.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping("/api/agent")
+@RequireRole({DemoUser.Role.DOCTOR, DemoUser.Role.ADMIN})
 public class AgentController {
 
   private final GeminiClient geminiClient;
@@ -25,6 +28,7 @@ public class AgentController {
 
   @PostMapping(value="/chat", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
   public Map<String, Object> chat(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+    String reqId = ApiResponse.requestId(request);
     DemoUser user = (DemoUser) request.getAttribute("demoUser");
     String userId = user == null ? "guest" : user.getUserId();
 
@@ -34,10 +38,10 @@ public class AgentController {
     String background = body.get("background") == null ? "" : String.valueOf(body.get("background"));
 
     if (msg.isBlank()) {
-      return Map.of("ok", false, "error", "message is empty");
+      return ApiResponse.error("INVALID_INPUT", "message is empty", reqId);
     }
     if (!geminiClient.hasApiKey()) {
-      return Map.of("ok", false, "error", "Missing API Key (gemini.apiKey)");
+      return ApiResponse.error("CONFIG_ERROR", "Missing API Key (gemini.apiKey)", reqId);
     }
     String lower = msg.toLowerCase();
     if (isGreetingOnly(lower) && (background == null || background.isBlank())) {
@@ -47,60 +51,57 @@ public class AgentController {
               + "- Discuss differential diagnosis and next steps\n"
               + "- Draft a radiology or clinical note\n\n"
             + "You can also tell me the main symptoms and what you want to focus on.";
-      return Map.of("ok", true, "from", "agent", "to", userId, "reply", reply);
+      Map<String, Object> data = new HashMap<>();
+      data.put("from", "agent");
+      data.put("to", userId);
+      data.put("reply", reply);
+      return ApiResponse.ok(data, reqId);
     }
 
     String historyKey = userId + ":" + caseId;
-    List<Map<String, Object>> contents = new ArrayList<>(chatHistory.getOrDefault(historyKey, List.of()));
 
-    // append user turn
-    contents.add(Map.of(
-            "role", "user",
-            "parts", List.of(Map.of("text", msg))
-    ));
+    List<Map<String, Object>> snapshot = new ArrayList<>(chatHistory.getOrDefault(historyKey, List.of()));
+    snapshot.add(Map.of("role", "user", "parts", List.of(Map.of("text", msg))));
+    List<Map<String, Object>> forGemini = trimToLastTurns(snapshot, 20);
 
     String system = buildSystemInstruction(background);
 
     try {
       Map<String, Object> g = geminiClient.generateChat(
-              contents,
+              forGemini,
               system,
               modelOverride,
-              0.75,     
-              4800    
+              0.75,
+              4800
       );
 
       String reply = g.get("rawText") == null ? "" : String.valueOf(g.get("rawText")).trim();
       if (reply.isBlank()) reply = "(No response)";
 
-      contents.add(Map.of(
-              "role", "model",
-              "parts", List.of(Map.of("text", reply))
-      ));
+      final String finalMsg = msg;
+      final String finalReply = reply;
+      chatHistory.compute(historyKey, (k, existing) -> {
+          List<Map<String, Object>> updated = new ArrayList<>(existing != null ? existing : List.of());
+          updated.add(Map.of("role", "user",  "parts", List.of(Map.of("text", finalMsg))));
+          updated.add(Map.of("role", "model", "parts", List.of(Map.of("text", finalReply))));
+          return trimToLastTurns(updated, 20);
+      });
 
-      contents = trimToLastTurns(contents, 20);
-      chatHistory.put(historyKey, contents);
-
-      Map<String, Object> out = new HashMap<>();
-      out.put("ok", true);
-      out.put("from", "agent");
-      out.put("to", userId);
-      out.put("reply", reply);
-      out.put("model", g.get("model"));
-      return out;
+      Map<String, Object> data = new HashMap<>();
+      data.put("from", "agent");
+      data.put("to", userId);
+      data.put("reply", reply);
+      data.put("model", g.get("model"));
+      return ApiResponse.ok(data, reqId);
     } catch (Exception e) {
-      return Map.of(
-              "ok", false,
-              "error", e.getMessage() == null ? "Gemini chat failed" : e.getMessage()
-      );
+      return ApiResponse.error("GEMINI_ERROR",
+              e.getMessage() == null ? "Gemini chat failed" : e.getMessage(), reqId);
     }
   }
 
   private boolean isGreetingOnly(String s) {
     return s.equals("hi") || s.equals("hello") || s.equals("hey")
-            || s.equals("你好") || s.equals("您好") || s.equals("嗨")
-            || s.equals("哈喽") || s.equals("早") || s.equals("早上好")
-            || s.equals("晚上好");
+            || s.equals("good morning") || s.equals("good evening");
   }
 
   private String buildSystemInstruction(String background) {

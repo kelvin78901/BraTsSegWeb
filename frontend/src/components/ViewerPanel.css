@@ -1,0 +1,82 @@
+.viewer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.viewer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.tool-group label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.tool-group input[type="range"] {
+  width: 100px;
+  accent-color: var(--cyan);
+}
+
+.tool-group input[type="checkbox"] { accent-color: var(--cyan); }
+
+.tool-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan2);
+  min-width: 28px;
+  text-align: right;
+}
+
+.viewport-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px;
+  min-height: 0;
+}
+
+.viewport-cell {
+  position: relative;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.viewport-cell canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.viewport-label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--cyan2);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  z-index: 1;
+}

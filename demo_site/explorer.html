@@ -179,24 +179,21 @@
 <script src="../nifti-reader.js"></script>
 
 <script>
-/** ===== status helpers ===== */
+
 const topMsg = document.getElementById("topMsg");
 const topOK  = document.getElementById("topOK");
 function warn(msg){ topOK.style.display="none"; topMsg.style.display="inline-flex"; topMsg.textContent = msg; }
 function ok(msg){ topMsg.style.display="none"; topOK.style.display="inline-flex"; topOK.textContent = msg; }
 function clearBanners(){ topMsg.style.display="none"; topOK.style.display="none"; topMsg.textContent=""; topOK.textContent=""; }
 
-/** ===== nifti presence ===== */
 if (!window.nifti) {
   warn("nifti-reader.js not loaded. Put nifti-reader.js in demo_site/ or ensure ../nifti-reader.js exists.");
   throw new Error("window.nifti missing");
 }
 const nifti = window.nifti;
 
-/** ===== constants ===== */
 const BASE = "./data";
 
-/** ===== dom ===== */
 const btnReload = document.getElementById("btnReload");
 const caseSelect = document.getElementById("caseSelect");
 const modSelect = document.getElementById("modSelect");
@@ -224,12 +221,10 @@ const cvs = {
   roi:{gt:C("roiGT"), pr:C("roiPR"), df:C("roiDF")}
 };
 
-/** ===== state ===== */
 let volMRI=null, volGT=null, volPR=null;
 let currentCase=null;
 let loading=false;
 
-/** ===== palette ===== */
 const labelColor = {
   0: [0,0,0,0],
   1: [255, 99, 132, 170],
@@ -239,14 +234,12 @@ const labelColor = {
 const FP = [239, 68, 68, 190];
 const FN = [59, 130, 246, 190];
 
-/** ===== ui lock ===== */
 function setLoading(v, msg){
   loading = v;
   [btnReload, caseSelect, modSelect].forEach(el=>el.disabled = v);
   debug.textContent = msg || (v ? "Loading..." : "Ready.");
 }
 
-/** ===== nifti load ===== */
 async function fetchNifti(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Missing file: ${url} (HTTP ${resp.status})`);
@@ -275,7 +268,6 @@ async function fetchNifti(url) {
   return { data, dims, header };
 }
 
-/** ===== slicing ===== */
 function idx3(x,y,z,X,Y){ return x + y*X + z*X*Y; }
 function getSlice(vol, axis, idx){
   const {data, dims:[X,Y,Z]} = vol;
@@ -296,7 +288,6 @@ function getSlice(vol, axis, idx){
   return {w,h,arr:out};
 }
 
-/** ===== rendering ===== */
 function normalizeToUint8(slice){
   let mn=Infinity, mx=-Infinity;
   for (const v of slice) { if (v<mn) mn=v; if (v>mx) mx=v; }
@@ -354,7 +345,6 @@ function toLabelU8(floatArr){
   return out;
 }
 
-/** ===== ROI ===== */
 function computeBBox2D(maskA, maskB, w, h){
   let x0=w, y0=h, x1=0, y1=0; let found=false;
   for (let y=0;y<h;y++){
@@ -422,27 +412,20 @@ function renderROI(mriSlice, gtU8, prU8){
   overlayDiff(imgDF, gtCropU8, prCropU8, alpha); put(cvs.roi.df, imgDF);
 }
 
-/** ===== metrics (robust parser) ===== */
 function pickRegionObj(m, key){
   if (!m || typeof m !== "object") return null;
 
-  // common shapes:
-  // A) { regions: { WT:{...}, TC:{...}, ET:{...} } }
   if (m.regions && m.regions[key]) return m.regions[key];
 
-  // B) { WT:{...}, TC:{...}, ET:{...} }
   if (m[key] && typeof m[key] === "object") return m[key];
 
-  // C) { metrics: { WT:{...} } }
   if (m.metrics && m.metrics[key]) return m.metrics[key];
 
-  // D) use lowercase / long names
   const lower = key.toLowerCase();
   if (m.regions && m.regions[lower]) return m.regions[lower];
   if (m[lower] && typeof m[lower] === "object") return m[lower];
   if (m.metrics && m.metrics[lower]) return m.metrics[lower];
 
-  // E) sometimes "whole_tumor", "tumor_core", "enhancing_tumor"
   const alias = {
     WT: ["whole_tumor","wholeTumor","wt"],
     TC: ["tumor_core","tumorCore","tc"],
@@ -483,7 +466,6 @@ function renderMetrics(m){
     return;
   }
 
-  // flat structure: WT_dice / TC_dice / ET_dice ...
   const hasFlat = ("WT_dice" in m) || ("TC_dice" in m) || ("ET_dice" in m);
   if (hasFlat){
     metricHint.textContent = `${currentCase} · Regions: WT/TC/ET`;
@@ -538,7 +520,7 @@ function renderMetrics(m){
 
   if (!WT && !TC && !ET){
     metricHint.textContent = "metrics.json found, but structure is not recognized";
-    // show raw keys quickly to help debug
+
     const keys = Object.keys(m).slice(0,12).join(", ");
     metricTableBody.innerHTML = `<tr><td colspan="8">Unrecognized metrics structure. Top-level keys: ${keys}</td></tr>`;
     return;
@@ -552,7 +534,6 @@ function renderMetrics(m){
     ["ET", ET],
   ];
 
-  // KPI cards (Dice + IoU)
   rows.forEach(([name, obj])=>{
     if (!obj) return;
     const box = document.createElement("div");
@@ -562,7 +543,6 @@ function renderMetrics(m){
     kpi.appendChild(box);
   });
 
-  // Table
   rows.forEach(([name, obj])=>{
     if (!obj) return;
     const tr = document.createElement("tr");
@@ -580,7 +560,6 @@ function renderMetrics(m){
   });
 }
 
-/** ===== render all ===== */
 function renderAll(){
   if (!volMRI || !volGT || !volPR) return;
 
@@ -596,7 +575,6 @@ function renderAll(){
   const yMid = Math.floor(Y/2);
   const xMid = Math.floor(X/2);
 
-  // Axial
   {
     const mri = getSlice(volMRI, "axial", z);
     const gt  = getSlice(volGT, "axial", z);
@@ -621,7 +599,6 @@ function renderAll(){
     renderROI(mri, gtU8, prU8);
   }
 
-  // Coronal
   {
     const mri = getSlice(volMRI, "coronal", yMid);
     const gt  = getSlice(volGT, "coronal", yMid);
@@ -644,7 +621,6 @@ function renderAll(){
     overlayDiff(imgDF, gtU8, prU8, alpha); put(cvs.co.df, imgDF);
   }
 
-  // Sagittal
   {
     const mri = getSlice(volMRI, "sagittal", xMid);
     const gt  = getSlice(volGT, "sagittal", xMid);
@@ -668,7 +644,6 @@ function renderAll(){
   }
 }
 
-/** ===== URL param case ===== */
 function getQueryCase(){
   const u = new URL(location.href);
   return u.searchParams.get("case");
@@ -679,7 +654,6 @@ function setQueryCase(caseId){
   history.replaceState({}, "", u.toString());
 }
 
-/** ===== main load ===== */
 async function loadCase(caseId){
   if (loading) return;
   clearBanners();
@@ -697,10 +671,8 @@ async function loadCase(caseId){
     const [mri, gt, pr] = await Promise.all([fetchNifti(mriUrl), fetchNifti(gtUrl), fetchNifti(prUrl)]);
     volMRI = mri; volGT = gt; volPR = pr;
 
-    // set default slice to middle for nicer demo
     sliceRange.value = Math.floor(volMRI.dims[2] / 2);
 
-    // metrics (optional)
     const metrics = await loadMetrics(caseId);
     renderMetrics(metrics);
 
@@ -744,7 +716,6 @@ async function reloadCaseList(){
   }
 }
 
-/** ===== events ===== */
 btnReload.addEventListener("click", ()=>reloadCaseList());
 caseSelect.addEventListener("change", ()=>loadCase(caseSelect.value));
 modSelect.addEventListener("change", ()=>loadCase(caseSelect.value));

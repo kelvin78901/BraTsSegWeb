@@ -211,9 +211,9 @@ let allCases=[];
 
 const labelColor = {
   0: [0,0,0,0],
-  1: [255, 99, 132, 170],  // NCR/NET
-  2: [94, 234, 212, 170],  // ED
-  4: [99, 102, 241, 170]   // ET
+  1: [255, 99, 132, 170],
+  2: [94, 234, 212, 170],
+  4: [99, 102, 241, 170]
 };
 const FP = [239, 68, 68, 190];
 const FN = [59, 130, 246, 190];
@@ -366,7 +366,7 @@ function crop2DU8(arrU8, w, h, cx, cy, size){
 }
 
 function renderROI(mriSlice, gtU8, prU8){
-  if (EMBED) return; // embed doesn't show ROI
+  if (EMBED) return;
 
   const mode = roiMode.value;
   if (mode === "off"){
@@ -452,7 +452,6 @@ function renderMetrics(m){
   }
 }
 
-
 function renderAll(){
   if (!volMRI || !volGT || !volPR) return;
 
@@ -468,7 +467,6 @@ function renderAll(){
   const yMid = Math.floor(Y/2);
   const xMid = Math.floor(X/2);
 
-  // Axial
   {
     const mri = getSlice(volMRI, "axial", z);
     const gt  = getSlice(volGT, "axial", z);
@@ -494,7 +492,6 @@ function renderAll(){
     renderROI(mri, gtU8, prU8);
   }
 
-  // Coronal
   {
     const mri = getSlice(volMRI, "coronal", yMid);
     const gt  = getSlice(volGT, "coronal", yMid);

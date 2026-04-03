@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -16,21 +15,19 @@ FPS = 12
 MAX_FRAMES = 90
 PAD_SLICES = 8
 
-
 VIEWS = ["axial", "coronal", "sagittal"]
 VIEW_NAMES = {"axial": "Axial", "coronal": "Coronal", "sagittal": "Sagittal"}
 ALL_MODALITIES = ["t1", "t1ce", "t2", "flair"]
 
-
-GAMMA = 0.65            # <1 brighter
-INVERT_MRI = True      
+GAMMA = 0.65
+INVERT_MRI = True
 AUTOCONTRAST = True
-AC_CUTOFF = 1          # %
+AC_CUTOFF = 1
 
 LABEL_COLORS = {
-    1: (255, 99, 132),   # NCR/NET
-    2: (94, 234, 212),   # ED
-    4: (99, 102, 241),   # ET
+    1: (255, 99, 132),
+    2: (94, 234, 212),
+    4: (99, 102, 241),
 }
 
 DIFF_COLORS = {
@@ -39,8 +36,7 @@ DIFF_COLORS = {
     "TP": (0, 255, 140),
 }
 
-FONT_PATH = None  # optional
-
+FONT_PATH = None
 
 def load_nii(path: Path) -> np.ndarray:
     return nib.load(str(path)).get_fdata(dtype=np.float32)
@@ -53,7 +49,6 @@ def normalize_slice_01(x2d: np.ndarray, p1=1, p99=99):
     y = (x2d - lo) / (hi - lo)
     return np.clip(y, 0, 1)
 
-
 def slice_2d(vol: np.ndarray, view: str, idx: int):
     if view == "axial":
         sl = vol[:, :, idx]
@@ -64,7 +59,6 @@ def slice_2d(vol: np.ndarray, view: str, idx: int):
     else:
         raise ValueError(view)
     return np.rot90(sl)
-
 
 def to_base_rgba(slice2d: np.ndarray) -> Image.Image:
     g01 = normalize_slice_01(slice2d)
@@ -79,7 +73,6 @@ def to_base_rgba(slice2d: np.ndarray) -> Image.Image:
 
     return im.convert("RGBA")
 
-
 def mask_to_outline(mask: np.ndarray):
     m = (mask > 0).astype(np.uint8)
     up = np.zeros_like(m); up[1:] = m[:-1]
@@ -87,7 +80,6 @@ def mask_to_outline(mask: np.ndarray):
     lf = np.zeros_like(m); lf[:,1:] = m[:,:-1]
     rt = np.zeros_like(m); rt[:,:-1] = m[:,1:]
     return (m != up) | (m != dn) | (m != lf) | (m != rt)
-
 
 def overlay_labels(base: Image.Image, seg2d: np.ndarray):
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -106,7 +98,6 @@ def overlay_labels(base: Image.Image, seg2d: np.ndarray):
             pix[int(x), int(y)] = (r, g, b, 220)
 
     return Image.alpha_composite(base, overlay)
-
 
 def overlay_diff(base: Image.Image, gt2d: np.ndarray, pr2d: np.ndarray):
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -127,7 +118,6 @@ def overlay_diff(base: Image.Image, gt2d: np.ndarray, pr2d: np.ndarray):
 
     return Image.alpha_composite(base, overlay)
 
-
 def draw_title(img: Image.Image, text: str):
     img = img.copy()
     draw = ImageDraw.Draw(img)
@@ -140,7 +130,6 @@ def draw_title(img: Image.Image, text: str):
     draw.text((x0, y0), text, fill=(255,255,255,230), font=font)
     return img
 
-
 def hstack(imgs, gap=10):
     h = max(i.height for i in imgs)
     w = sum(i.width for i in imgs) + gap*(len(imgs)-1)
@@ -150,7 +139,6 @@ def hstack(imgs, gap=10):
         canvas.paste(im, (x, (h-im.height)//2))
         x += im.width + gap
     return canvas
-
 
 def vstack(imgs, gap=12):
     w = max(i.width for i in imgs)
@@ -170,7 +158,6 @@ def find_slice_range(seg3d, view):
         mid = n//2
         return max(0,mid-20), min(n-1,mid+20)
     return max(0,nz.min()-PAD_SLICES), min(n-1,nz.max()+PAD_SLICES)
-
 
 def linspace_indices(lo, hi):
     n = hi-lo+1
@@ -199,13 +186,11 @@ def build_frame(cid, modality, slice_map, mri3d, gt3d, pr3d):
     header = draw_title(header, f"{cid} | {modality.upper()} | Tri-view")
     return vstack([header, body])
 
-
 def read_case_ids():
     items = json.loads(INDEX_JSON.read_text(encoding="utf-8"))
     if isinstance(items[0], str):
         return items
     return [it["case_id"] for it in items]
-
 
 def main():
     case_ids = read_case_ids()
@@ -221,7 +206,6 @@ def main():
         gt3d = load_nii(gt_path).astype(int)
         pr3d = load_nii(pr_path).astype(int)
 
-        # ★ 修正常见 0/1/2/3 → 0/1/2/4
         pr3d[pr3d == 3] = 4
 
         for modality in ALL_MODALITIES:
@@ -248,7 +232,6 @@ def main():
             print(f"[OK] {cid} {modality}")
 
     print("All tri-view GIFs generated.")
-
 
 if __name__ == "__main__":
     main()

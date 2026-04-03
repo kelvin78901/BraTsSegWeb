@@ -5,10 +5,9 @@ import numpy as np
 
 import nibabel as nib
 
-
-DATA_DIR = r"C:\Users\kelvin\Downloads\archive\BraTS2021_Training_Data"        # 原始 BraTS 解压目录(含 *_t1.nii.gz 等)
-OUT_DIR  = r"C:\Users\kelvin\Downloads\brats_workspace\kaist_pred_A"          # nnUNet 推理输出目录（BraTS2021_00000.nii.gz）
-WEB_DIR  = r"C:\Users\kelvin\Downloads\brats_web"                              # 网页目录（本脚本所在目录）
+DATA_DIR = r"C:\Users\kelvin\Downloads\archive\BraTS2021_Training_Data"
+OUT_DIR  = r"C:\Users\kelvin\Downloads\brats_workspace\kaist_pred_A"
+WEB_DIR  = r"C:\Users\kelvin\Downloads\brats_web"
 
 LIMIT_CASES = 10
 
@@ -22,20 +21,16 @@ MODS = {
 DATA_OUT = Path(WEB_DIR) / "data"
 DATA_OUT.mkdir(parents=True, exist_ok=True)
 
-
 def load_nii(path):
     img = nib.load(path)
     data = img.get_fdata(dtype=np.float32)
     return img, data
-
 
 def save_copy(src, dst):
     src = Path(src)
     dst = Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
-
-
 
 def mask_regions_brats(label_vol):
     """
@@ -49,7 +44,6 @@ def mask_regions_brats(label_vol):
     tc = np.isin(label_vol, [1,4]).astype(np.uint8)
     et = (label_vol == 4).astype(np.uint8)
     return {"WT": wt, "TC": tc, "ET": et}
-
 
 def compute_metrics_binary(gt, pr):
     gt = gt.astype(bool)
@@ -69,7 +63,6 @@ def compute_metrics_binary(gt, pr):
         "dice": float(dice), "iou": float(iou),
         "precision": float(prec), "recall": float(rec)
     }
-
 
 def main():
     cases = sorted([d for d in os.listdir(DATA_DIR) if d.startswith("BraTS2021_") and os.path.isdir(os.path.join(DATA_DIR, d))])
@@ -139,7 +132,6 @@ def main():
     print("\nDone.")
     print("Cases exported:", len(available))
     print("Open:", r"http://127.0.0.1:8000/index.html")
-
 
 if __name__ == "__main__":
     main()

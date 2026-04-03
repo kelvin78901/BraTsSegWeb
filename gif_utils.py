@@ -16,15 +16,10 @@ def merge_two_gif(
     filename1: str,
     filename2: str,
     out_gif: str,
-    mode: str = "h",        # "h"=side-by-side, "v"=top-bottom
+    mode: str = "h",
     pad: int = 8,
     bg=(0, 0, 0, 255)
 ):
-    """
-    合并两个 gif，按帧对齐（按最短帧数），输出新的 gif
-    mode="h": 左右拼接
-    mode="v": 上下拼接
-    """
     f1, d1, loop1 = _load_gif_frames(filename1)
     f2, d2, loop2 = _load_gif_frames(filename2)
 
@@ -32,11 +27,9 @@ def merge_two_gif(
     if n == 0:
         raise ValueError("GIF has no frames")
 
-    # 统一到同样尺寸（以第一张为基准，也可改成 max 尺寸）
     w1, h1 = f1[0].size
     w2, h2 = f2[0].size
 
-    # 如果尺寸不同，做 resize（保持各自比例不变，直接拉伸到对齐）
     if (w1, h1) != (w2, h2):
         f2 = [fr.resize((w1, h1), Image.BILINEAR) for fr in f2]
 

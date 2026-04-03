@@ -1,10 +1,10 @@
 import argparse
 import os
+import sys
 import urllib.request
 
 import nibabel as nib
 import numpy as np
-
 
 def _lazy_import_torch_monai():
     try:
@@ -18,22 +18,25 @@ def _lazy_import_torch_monai():
             "Missing dependencies for open model inference. Install with: pip install torch monai"
         ) from exc
 
-
 def ensure_weights(model_path: str, model_url: str):
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     if os.path.exists(model_path) and os.path.getsize(model_path) > 0:
         return
     urllib.request.urlretrieve(model_url, model_path)
 
-
 def load_flair_to_4ch(input_nii_path: str):
     img = nib.load(input_nii_path)
     flair = img.get_fdata(dtype=np.float32)
     if flair.ndim != 3:
         raise RuntimeError(f"Expected 3D MRI volume, got shape={flair.shape}")
+
+    print(
+        "[open_brats_infer] WARNING: Single-modality FLAIR input replicated to 4 channels. "
+        "TC and ET segmentation accuracy will be reduced without T1/T1ce/T2 inputs.",
+        file=sys.stderr,
+    )
     x = np.stack([flair, flair, flair, flair], axis=0)
     return img, x
-
 
 def run_open_model(input_nii_path: str, output_pred_path: str, model_path: str):
     torch, SlidingWindowInferer, SegResNet, NormalizeIntensity = _lazy_import_torch_monai()
@@ -80,7 +83,6 @@ def run_open_model(input_nii_path: str, output_pred_path: str, model_path: str):
     out_np = out.detach().cpu().numpy().astype(np.uint8)
     nib.save(nib.Nifti1Image(out_np, affine=ref_img.affine, header=ref_img.header), output_pred_path)
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
@@ -91,7 +93,6 @@ def main():
 
     ensure_weights(args.model_path, args.model_url)
     run_open_model(args.input, args.output, args.model_path)
-
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
 package com.demo.med.agent;
 
-import com.demo.med.patient.PatientController;
+import com.demo.med.config.ApiResponse;
+import com.demo.med.patient.PatientProfileService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,26 +22,49 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.demo.med.auth.DemoUser;
+import com.demo.med.auth.RequireRole;
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 @RequestMapping("/api/ai")
+@RequireRole({DemoUser.Role.DOCTOR, DemoUser.Role.ADMIN})
 public class AiConsultController {
 
     private final GeminiClient geminiClient;
-    private final PatientController patientController;
+    private final PatientProfileService patientProfileService;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    private final Map<String, String> backgroundCache = new ConcurrentHashMap<>();
+
+    private static final long BG_CACHE_TTL_MS = 60 * 60 * 1000L;
+    private record BgEntry(String value, long expiresAt) {}
+    private final Map<String, BgEntry> backgroundCache = new ConcurrentHashMap<>();
+    {
+
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "bg-cache-cleanup");
+            t.setDaemon(true);
+            return t;
+        }).scheduleAtFixedRate(() -> {
+            long now = System.currentTimeMillis();
+            backgroundCache.entrySet().removeIf(e -> e.getValue().expiresAt() < now);
+        }, 15, 15, java.util.concurrent.TimeUnit.MINUTES);
+    }
 
     @Value("${sidecar.baseUrl:http://localhost:8000}")
     private String sidecarBaseUrl;
 
-    public AiConsultController(GeminiClient geminiClient, PatientController patientController) {
+    @Value("${sidecar.secret:}")
+    private String sidecarSecret;
+
+    public AiConsultController(GeminiClient geminiClient, PatientProfileService patientProfileService) {
         this.geminiClient = geminiClient;
-        this.patientController = patientController;
+        this.patientProfileService = patientProfileService;
     }
 
     @PostMapping(value = "/consult", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public Map<String, Object> consult(@RequestBody Map<String, Object> body) {
+    public Map<String, Object> consult(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        String reqId = ApiResponse.requestId(request);
         String caseId = String.valueOf(body.getOrDefault("caseId", "BraTS2021_00012"));
         String question = String.valueOf(body.getOrDefault("question", "")).trim();
         String modelOverride = null;
@@ -51,25 +75,33 @@ public class AiConsultController {
         Object bgVal = body.get("background");
         if (bgVal != null) background = String.valueOf(bgVal);
         if (background == null || background.isBlank()) {
-            background = backgroundCache.get(caseId);
+            BgEntry cached = backgroundCache.get(caseId);
+            if (cached != null && cached.expiresAt() > System.currentTimeMillis()) {
+                background = cached.value();
+            } else if (cached != null) {
+                backgroundCache.remove(caseId);
+            }
         }
 
         Integer sliceZ = null;
         Object sliceVal = body.get("sliceZ");
         if (sliceVal instanceof Number) sliceZ = ((Number) sliceVal).intValue();
 
+        String patientContext = null;
+        Object pcVal = body.get("patientContext");
+        if (pcVal != null) patientContext = String.valueOf(pcVal);
+
         try {
-            Map<String, Object> patient = patientController.me(null);
+            Map<String, Object> patient = patientProfileService.getProfile();
             Map<String, Object> metrics = loadMetrics(caseId);
             Map<String, Object> frames = fetchKeyframes(caseId, sliceZ);
             @SuppressWarnings("unchecked")
             List<Map<String, String>> images = (List<Map<String, String>>) frames.getOrDefault("images", List.of());
 
-            String prompt = buildConsultPrompt(caseId, question, patient, metrics, images, background);
+            String prompt = buildConsultPrompt(caseId, question, patient, metrics, images, background, patientContext);
             Map<String, Object> gemini = geminiClient.generateConsult(prompt, images, modelOverride);
 
             Map<String, Object> resp = new HashMap<>();
-            resp.put("ok", true);
             resp.put("caseId", caseId);
             resp.put("answer", gemini.get("answer"));
             resp.put("rawText", gemini.get("rawText"));
@@ -78,12 +110,10 @@ public class AiConsultController {
             resp.put("images", images);
             resp.put("metrics", metrics);
             if (background != null && !background.isBlank()) resp.put("background", background);
-            return resp;
+            return ApiResponse.ok(resp, reqId);
         } catch (Exception e) {
-            return Map.of(
-                    "ok", false,
-                    "error", e.getMessage() == null ? "AI consult failed" : e.getMessage()
-            );
+            return ApiResponse.error("CONSULT_ERROR",
+                    e.getMessage() == null ? "AI consult failed" : e.getMessage(), reqId);
         }
     }
 
@@ -111,6 +141,7 @@ public class AiConsultController {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(10))
+                    .header("X-Sidecar-Key", sidecarSecret != null ? sidecarSecret : "")
                     .GET()
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -142,8 +173,24 @@ public class AiConsultController {
         return out;
     }
 
+    @GetMapping(value = "/models", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Object> listModels(HttpServletRequest request) {
+        String reqId = ApiResponse.requestId(request);
+        try {
+            List<Map<String, Object>> models = geminiClient.listModels();
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("models", models);
+            payload.put("default", geminiClient.getModel());
+            return ApiResponse.ok(payload, reqId);
+        } catch (Exception e) {
+            return ApiResponse.error("MODELS_ERROR",
+                    e.getMessage() == null ? "Failed to list models" : e.getMessage(), reqId);
+        }
+    }
+
     @PostMapping(value = "/background", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public Map<String, Object> background(@RequestBody Map<String, Object> body) {
+    public Map<String, Object> background(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        String reqId = ApiResponse.requestId(request);
         String caseId = String.valueOf(body.getOrDefault("caseId", "BraTS2021_00012"));
         String modelOverride = null;
         Object modelVal = body.get("model");
@@ -154,7 +201,7 @@ public class AiConsultController {
         if (sliceVal instanceof Number) sliceZ = ((Number) sliceVal).intValue();
 
         try {
-            Map<String, Object> patient = patientController.me(null);
+            Map<String, Object> patient = patientProfileService.getProfile();
             Map<String, Object> metrics = loadMetrics(caseId);
             Map<String, Object> frames = fetchKeyframes(caseId, sliceZ);
             @SuppressWarnings("unchecked")
@@ -162,7 +209,6 @@ public class AiConsultController {
 
             String prompt = buildBackgroundPrompt(caseId, patient, metrics, images);
 
-            // IMPORTANT: background schema is different from consult schema.
             Map<String, Object> gemini = geminiClient.generateBackground(prompt, images, modelOverride);
 
             String background = null;
@@ -176,19 +222,16 @@ public class AiConsultController {
                 if (raw != null) background = String.valueOf(raw);
             }
             if (background == null) background = "";
-            backgroundCache.put(caseId, background);
+            backgroundCache.put(caseId, new BgEntry(background, System.currentTimeMillis() + BG_CACHE_TTL_MS));
 
             Map<String, Object> resp = new HashMap<>();
-            resp.put("ok", true);
             resp.put("caseId", caseId);
             resp.put("background", background);
             resp.put("model", gemini.get("model"));
-            return resp;
+            return ApiResponse.ok(resp, reqId);
         } catch (Exception e) {
-            return Map.of(
-                    "ok", false,
-                    "error", e.getMessage() == null ? "AI background failed" : e.getMessage()
-            );
+            return ApiResponse.error("BACKGROUND_ERROR",
+                    e.getMessage() == null ? "AI background failed" : e.getMessage(), reqId);
         }
     }
 
@@ -213,6 +256,7 @@ public class AiConsultController {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(30))
+                    .header("X-Sidecar-Key", sidecarSecret != null ? sidecarSecret : "")
                     .GET()
                     .build();
 
@@ -231,8 +275,11 @@ public class AiConsultController {
                                      Map<String, Object> patient,
                                      Map<String, Object> metrics,
                                      List<Map<String, String>> images,
-                                     String background) {
-        String patientSummary = buildPatientSummary(patient);
+                                     String background,
+                                     String patientContext) {
+        String patientSummary = (patientContext != null && !patientContext.isBlank())
+                ? patientContext
+                : buildPatientSummary(patient);
         String metricsSummary = buildMetricsSummary(metrics);
         String imgSummary = images == null ? "0" : String.valueOf(images.size());
 
@@ -240,17 +287,22 @@ public class AiConsultController {
             question = "Provide key imaging findings, differential, and next steps for a clinician.";
         }
 
-        return "You are a clinical decision support (CDS) assistant for doctors. "
+        return "You are a clinical decision support (CDS) assistant for doctors.\n"
+                + "IMPORTANT INSTRUCTION: You MUST ONLY base your analysis and answers on the patient data, "
+                + "imaging metrics, keyframe images, uploaded documents, and background context provided below. "
+                + "Do NOT assume, fabricate, or infer information beyond what is explicitly given. "
+                + "If the provided data is insufficient to answer the question, clearly state what additional "
+                + "information would be needed.\n\n"
                 + "Be helpful and concise, but not robotic. "
                 + "Do NOT provide medication dosing or a definitive diagnosis. "
-                + "If information is insufficient, ask focused questions instead of guessing. "
                 + "Respond in JSON matching the provided schema (no extra keys).\n\n"
-                + "Case: " + caseId + "\n"
-                + "Patient summary (de-identified): " + patientSummary + "\n"
-                + "Metrics: " + metricsSummary + "\n"
-                + "Images provided: " + imgSummary + " PNG keyframes with segmentation overlay.\n"
-                + (background == null || background.isBlank() ? "" : "Background context (do not restate verbatim): " + background + "\n")
-                + "Clinician question: " + question + "\n";
+                + "=== CASE DATA ===\n"
+                + "Case ID: " + caseId + "\n\n"
+                + "-- Patient Information --\n" + patientSummary + "\n\n"
+                + "-- Segmentation Metrics --\n" + metricsSummary + "\n\n"
+                + "-- Imaging --\n" + imgSummary + " PNG keyframes with segmentation overlay provided.\n"
+                + (background == null || background.isBlank() ? "" : "\n-- Background Context --\n" + background + "\n")
+                + "\n=== CLINICIAN QUESTION ===\n" + question + "\n";
     }
 
     private String buildBackgroundPrompt(String caseId,

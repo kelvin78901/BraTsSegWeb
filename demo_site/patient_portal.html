@@ -98,7 +98,7 @@
 
     .grid2{
       display:grid;
-      grid-template-columns: 1.9fr 1.1fr; /* wider content area */
+      grid-template-columns: 1.9fr 1.1fr;
       gap:12px;
       align-items:start;
     }
@@ -128,7 +128,6 @@
     .card .bd{padding:12px}
     .divider{height:1px;background:rgba(31,42,68,.65);margin:10px 0}
 
-    /* left column sections */
     .summaryGrid{
       display:grid;
       grid-template-columns: 1.25fr 1fr;
@@ -160,7 +159,6 @@
     .tag.warn{border-color: rgba(251,191,36,.30); color: rgba(251,191,36,.95); background: rgba(251,191,36,.08)}
     .tag.blue{border-color: rgba(96,165,250,.30); color: rgba(96,165,250,.95); background: rgba(96,165,250,.08)}
 
-    /* preview */
     .previewGrid{
       display:grid;
       grid-template-columns: 1fr 1fr;
@@ -182,7 +180,7 @@
     }
     canvas{
       width:100%;
-      height: 520px; /* bigger for demo */
+      height: 520px;
       display:block;
       border-radius: 12px;
       border: 1px solid rgba(31,42,68,.85);
@@ -225,8 +223,8 @@
       gap:10px;
     }
     .chatBox{
-      height: 360px;             /* fixed length */
-      overflow:auto;             /* scrollable */
+      height: 360px;
+      overflow:auto;
       padding:10px;
       border-radius:12px;
       border:1px solid rgba(31,42,68,.75);
@@ -281,7 +279,6 @@
       padding: 6px 0 2px;
     }
 
-    /* responsive */
     @media (max-width: 1180px){
       .grid2{grid-template-columns: 1fr}
       .rightStack{position: static}
@@ -329,7 +326,6 @@
 <main>
   <div class="grid2">
 
-    <!-- LEFT COLUMN -->
     <div class="leftCol">
       <section class="card">
         <div class="hd">
@@ -500,7 +496,6 @@
         </div>
       </section>
 
-      <!-- AI Agent moved to RIGHT -->
       <section class="card">
         <div class="hd">
           <h2>AI Agent (Demo)</h2>
@@ -695,7 +690,6 @@ function overlayLabels(img, maskU8, alpha){
   }
 }
 
-
 async function fetchNifti(url){
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Fetch failed: ${url} (${resp.status})`);
@@ -706,7 +700,7 @@ async function fetchNifti(url){
   const header = nifti.readHeader(raw);
   const imgBuf = nifti.readImage(header, raw);
 
-  const dims = [header.dims[1], header.dims[2], header.dims[3]]; // X,Y,Z
+  const dims = [header.dims[1], header.dims[2], header.dims[3]];
   const code = header.datatypeCode;
 
   let typed;
@@ -725,7 +719,6 @@ async function fetchNifti(url){
 
   return {data, dims, header};
 }
-
 
 async function loadMetrics(caseId){
   const url = `/data/${caseId}/metrics.json`;
@@ -774,7 +767,6 @@ function renderMetrics(m){
   }
 }
 
-
 function renderSlice(){
   if (!volMRI || !volPR) return;
 
@@ -796,10 +788,8 @@ function renderSlice(){
   const gray = applyWindowLevelToGray(mri.arr);
   const prU8 = toLabelU8(pr.arr);
 
-  // raw
   drawGray(cRaw, mri.w, mri.h, gray);
 
-  // overlay
   const img = drawGray(cOv, mri.w, mri.h, gray);
   overlayLabels(img, prU8, parseFloat(alphaRange.value));
   cOv.getContext("2d").putImageData(img,0,0);
@@ -825,15 +815,12 @@ async function loadCase(caseId){
     volMRI = mri;
     volPR = pr;
 
-    // slice defaults
     sliceRange.max = Math.max(0, mri.dims[2]-1);
     sliceRange.value = String(Math.floor(mri.dims[2]*0.55));
 
-    // load metrics (optional)
     const metrics = await loadMetrics(caseId);
     renderMetrics(metrics);
 
-    // status
     assetDot.classList.remove("off");
     assetStatus.textContent = "Local assets: ready";
     segTag.textContent = "Segmentation: Completed";
@@ -873,7 +860,6 @@ async function reloadCaseList(){
   setLog(`Case list loaded (${cases.length}).`, "Ready");
 }
 
-
 function stopAutoplay(){
   if (autoplayTimer){
     clearInterval(autoplayTimer);
@@ -898,7 +884,7 @@ function startAutoplay(){
 }
 
 function scrollChatToBottom(){
-  // ensure layout settled
+
   requestAnimationFrame(()=>{
     chatBox.scrollTop = chatBox.scrollHeight;
   });
@@ -933,7 +919,6 @@ function addMessage(role, text){
 function agentReply(userText){
   const t = (userText || "").toLowerCase();
 
-  // metrics summary
   const wt = mWT.textContent, tc = mTC.textContent, et = mET.textContent;
   const haveMetrics = wt !== "—" && tc !== "—" && et !== "—";
 
@@ -962,7 +947,6 @@ function agentReply(userText){
 
   return `I can summarize metrics (WT/TC/ET), explain Auto Play, or guide you to the Explorer view. Try: "Summarize WT/TC/ET dice".`;
 }
-
 
 btnExplorer.addEventListener("click", ()=>{
   const c = encodeURIComponent(caseSelect.value || "");
@@ -993,7 +977,7 @@ modSelect.addEventListener("change", ()=>loadCase(caseSelect.value));
 speedRange.addEventListener("input", ()=>{
   speedLabel.textContent = `${speedRange.value}ms`;
   if (autoplayTimer){
-    startAutoplay(); // restart with new speed
+    startAutoplay();
   }
 });
 
@@ -1011,14 +995,12 @@ btnPlay.addEventListener("click", ()=>{
 });
 btnStop.addEventListener("click", stopAutoplay);
 
-/* chat */
 function sendChat(){
   const text = (chatInput.value || "").trim();
   if (!text) return;
   chatInput.value = "";
   addMessage("user", text);
 
-  // tiny delay to feel like a response
   setTimeout(()=>{
     addMessage("agent", agentReply(text));
   }, 150);
@@ -1029,7 +1011,7 @@ chatInput.addEventListener("keydown", (e)=>{
 });
 
 (function init(){
-  // default WL labels
+
   wlCenterLabel.textContent = `Center ${parseFloat(wlCenter.value).toFixed(2)}`;
   wlStrengthLabel.textContent = `${parseFloat(wlStrength.value).toFixed(2)}×`;
   speedLabel.textContent = `${speedRange.value}ms`;

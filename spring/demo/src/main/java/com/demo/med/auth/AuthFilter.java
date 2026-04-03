@@ -16,21 +16,10 @@ public class AuthFilter extends OncePerRequestFilter {
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
     String path = request.getRequestURI();
-    // 放行静态资源、登录接口
-    return path.equals("/")
-      || path.equals("/index.html")
-      || path.equals("/login.html")
-      || path.equals("/1.html")
-      || path.equals("/patient.html")
-      || path.equals("/doctor.html")
-      || path.equals("/nifti-reader.js")
-      || path.equals("/viewer")
-      || path.startsWith("/viewer/")
-      || path.startsWith("/assets/")
-      || path.startsWith("/favicon")
-      || path.startsWith("/api/auth/")
-      || path.startsWith("/api/ai/")
-      || path.startsWith("/api/agent/");
+
+    if (!path.startsWith("/api/")) return true;
+
+    return path.startsWith("/api/auth/") || path.equals("/api/ai/selfcheck");
   }
 
   @Override

@@ -109,7 +109,6 @@
     </div>
   </section>
 
-  <!-- 3 rows: Axial / Coronal / Sagittal ; each row 4 cols: Raw / GT / Pred / Diff -->
   <section class="card">
     <div class="viewTitle"><b>Axial (Z)</b><span class="hint" id="axInfo"></span></div>
     <div class="grid4">
@@ -153,18 +152,15 @@
   </section>
 </main>
 
-<!-- IMPORTANT: use local nifti-reader.js (UMD that provides window.nifti) -->
 <script src="/nifti-reader.js"></script>
 
-
 <script>
-/** ============ Safety check ============ */
+
 if (!window.nifti) {
   throw new Error("nifti-reader.js loaded, but window.nifti is missing. Make sure you are using the UMD build that exposes global nifti.");
 }
 const nifti = window.nifti;
 
-/** ============ DOM ============ */
 const btnReload = document.getElementById("btnReload");
 const caseSelect = document.getElementById("caseSelect");
 const modSelect = document.getElementById("modSelect");
@@ -184,7 +180,6 @@ const axInfo = document.getElementById("axInfo");
 const coInfo = document.getElementById("coInfo");
 const saInfo = document.getElementById("saInfo");
 
-/** canvases */
 const C = (id)=>document.getElementById(id);
 const cvs = {
   ax:{raw:C("axRaw"), gt:C("axGT"), pr:C("axPR"), df:C("axDF")},
@@ -193,39 +188,33 @@ const cvs = {
   roi:{gt:C("roiGT"), pr:C("roiPR"), df:C("roiDF")}
 };
 
-/** ============ State ============ */
 let volMRI=null, volGT=null, volPR=null;
 let currentCase=null;
 
-/** BraTS palette (overlay for labels 1/2/4) */
 const labelColor = {
   0: [0,0,0,0],
-  1: [255, 99, 132, 170],  // NCR/NET
-  2: [94, 234, 212, 170],  // ED
-  4: [99, 102, 241, 170]   // ET
+  1: [255, 99, 132, 170],
+  2: [94, 234, 212, 170],
+  4: [99, 102, 241, 170]
 };
 
-/** Diff colors (FP/FN) */
 const FP = [239, 68, 68, 190];
 const FN = [59, 130, 246, 190];
 
-/** ============ NIfTI fetch/parse ============ */
 async function fetchNifti(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Fetch failed: ${url} (${resp.status})`);
   let raw = await resp.arrayBuffer();
 
-  // gzip?
   if (nifti.isCompressed(raw)) raw = nifti.decompress(raw);
   if (!nifti.isNIFTI(raw)) throw new Error(`Not a valid NIfTI: ${url}`);
 
   const header = nifti.readHeader(raw);
   const imgBuf = nifti.readImage(header, raw);
 
-  const dims = [header.dims[1], header.dims[2], header.dims[3]]; // X,Y,Z
+  const dims = [header.dims[1], header.dims[2], header.dims[3]];
   const code = header.datatypeCode;
 
-  // Map datatype -> TypedArray
   let typed;
   if (code === nifti.NIFTI1.TYPE_UINT8) typed = new Uint8Array(imgBuf);
   else if (code === nifti.NIFTI1.TYPE_INT16) typed = new Int16Array(imgBuf);
@@ -234,7 +223,6 @@ async function fetchNifti(url) {
   else if (code === nifti.NIFTI1.TYPE_FLOAT64) typed = new Float64Array(imgBuf);
   else typed = new Uint8Array(imgBuf);
 
-  // Apply scl_slope/inter if present -> float32
   const slope = (header.scl_slope === 0 || header.scl_slope == null) ? 1.0 : header.scl_slope;
   const inter = header.scl_inter || 0.0;
   const data = new Float32Array(typed.length);
@@ -243,28 +231,27 @@ async function fetchNifti(url) {
   return { data, dims, header };
 }
 
-/** ============ Slicing helpers ============ */
 function idx3(x,y,z,X,Y){ return x + y*X + z*X*Y; }
 
 function getSlice(vol, axis, idx){
   const {data, dims:[X,Y,Z]} = vol;
   let w,h, out;
 
-  if (axis === "axial") { // z fixed
+  if (axis === "axial") {
     w=X; h=Y;
     out = new Float32Array(w*h);
     let p=0;
     for (let y=0;y<Y;y++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,y,idx,X,Y)];
     return {w,h,arr:out};
   }
-  if (axis === "coronal") { // y fixed
+  if (axis === "coronal") {
     w=X; h=Z;
     out = new Float32Array(w*h);
     let p=0;
     for (let z=0;z<Z;z++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,idx,z,X,Y)];
     return {w,h,arr:out};
   }
-  // sagittal x fixed
+
   w=Y; h=Z;
   out = new Float32Array(w*h);
   let p=0;
@@ -272,7 +259,6 @@ function getSlice(vol, axis, idx){
   return {w,h,arr:out};
 }
 
-/** ============ Rendering ============ */
 function normalizeToUint8(slice){
   let mn=Infinity, mx=-Infinity;
   for (const v of slice) { if (v<mn) mn=v; if (v>mx) mx=v; }
@@ -299,7 +285,7 @@ function drawBase(canvas, w, h, grayU8){
 }
 
 function overlayLabels(img, maskU8, alpha){
-  // mask values are 0/1/2/4; but our volumes are float -> round
+
   for (let i=0;i<maskU8.length;i++){
     const m = maskU8[i];
     if (m===0) continue;
@@ -313,7 +299,7 @@ function overlayLabels(img, maskU8, alpha){
 }
 
 function overlayDiff(img, gtU8, prU8, alpha){
-  // FP red: pr>0 gt==0 ; FN blue: gt>0 pr==0
+
   for (let i=0;i<gtU8.length;i++){
     const g = gtU8[i], p = prU8[i];
     const b=i*4;
@@ -340,7 +326,6 @@ function toLabelU8(floatArr){
   return out;
 }
 
-/** ============ ROI bbox on union mask (GT∪Pred) ============ */
 function computeBBox2D(maskA, maskB, w, h){
   let x0=w, y0=h, x1=0, y1=0;
   let found=false;
@@ -380,7 +365,6 @@ function crop2D(arr, w, h, cx, cy, size){
   return {w:cw, h:ch, arr:out};
 }
 
-/** ============ Metrics UI ============ */
 async function loadMetrics(caseId){
   const url = `/data/${caseId}/metrics.json`;
   const resp = await fetch(url);
@@ -398,7 +382,7 @@ function renderMetrics(m){
   metricHint.textContent = `${m.case} · Regions: WT/TC/ET`;
 
   const regions = m.regions;
-  // KPIs: show Dice WT/TC/ET
+
   for (const r of ["WT","TC","ET"]){
     const box = document.createElement("div");
     box.className = "box";
@@ -423,7 +407,6 @@ function renderMetrics(m){
   }
 }
 
-/** ============ Main render ============ */
 function renderAll(){
   if (!volMRI || !volGT || !volPR) return;
 
@@ -436,11 +419,9 @@ function renderAll(){
 
   const alpha = parseFloat(alphaRange.value);
 
-  // Axial uses z index; Coronal uses y=mid; Sagittal uses x=mid
   const yMid = Math.floor(Y/2);
   const xMid = Math.floor(X/2);
 
-  // --- Axial
   {
     const mri = getSlice(volMRI, "axial", z);
     const gt  = getSlice(volGT, "axial", z);
@@ -452,29 +433,23 @@ function renderAll(){
 
     axInfo.textContent = `${currentCase} · ${modSelect.value.toUpperCase()} · axial z=${z}`;
 
-    // raw
     drawBase(cvs.ax.raw, mri.w, mri.h, baseU8);
 
-    // GT overlay
     let imgGT = drawBase(cvs.ax.gt, mri.w, mri.h, baseU8);
     overlayLabels(imgGT, gtU8, alpha);
     put(cvs.ax.gt, imgGT);
 
-    // Pred overlay
     let imgPR = drawBase(cvs.ax.pr, mri.w, mri.h, baseU8);
     overlayLabels(imgPR, prU8, alpha);
     put(cvs.ax.pr, imgPR);
 
-    // Diff
     let imgDF = drawBase(cvs.ax.df, mri.w, mri.h, baseU8);
     overlayDiff(imgDF, gtU8, prU8, alpha);
     put(cvs.ax.df, imgDF);
 
-    // ROI render (axial slice based)
     renderROI(mri, gtU8, prU8, baseU8, "axial");
   }
 
-  // --- Coronal
   {
     const mri = getSlice(volMRI, "coronal", yMid);
     const gt  = getSlice(volGT, "coronal", yMid);
@@ -501,7 +476,6 @@ function renderAll(){
     put(cvs.co.df, imgDF);
   }
 
-  // --- Sagittal
   {
     const mri = getSlice(volMRI, "sagittal", xMid);
     const gt  = getSlice(volGT, "sagittal", xMid);
@@ -534,7 +508,7 @@ function renderAll(){
 function renderROI(mriSlice, gtU8, prU8, baseU8, axisName){
   const mode = roiMode.value;
   if (mode === "off"){
-    // clear
+
     ["gt","pr","df"].forEach(k=>{
       const c = cvs.roi[k];
       const ctx=c.getContext("2d");
@@ -555,7 +529,6 @@ function renderROI(mriSlice, gtU8, prU8, baseU8, axisName){
     }
   }
 
-  // crop MRI float slice for normalization stability
   const mriCrop = crop2D(mriSlice.arr, mriSlice.w, mriSlice.h, cx, cy, size);
   const gtCropF = crop2D(Array.from(gtU8, x=>x), mriSlice.w, mriSlice.h, cx, cy, size);
   const prCropF = crop2D(Array.from(prU8, x=>x), mriSlice.w, mriSlice.h, cx, cy, size);
@@ -566,23 +539,19 @@ function renderROI(mriSlice, gtU8, prU8, baseU8, axisName){
 
   const alpha = parseFloat(alphaRange.value);
 
-  // GT zoom
   let imgGT = drawBase(cvs.roi.gt, mriCrop.w, mriCrop.h, baseCropU8);
   overlayLabels(imgGT, gtCropU8, alpha);
   put(cvs.roi.gt, imgGT);
 
-  // Pred zoom
   let imgPR = drawBase(cvs.roi.pr, mriCrop.w, mriCrop.h, baseCropU8);
   overlayLabels(imgPR, prCropU8, alpha);
   put(cvs.roi.pr, imgPR);
 
-  // Diff zoom
   let imgDF = drawBase(cvs.roi.df, mriCrop.w, mriCrop.h, baseCropU8);
   overlayDiff(imgDF, gtCropU8, prCropU8, alpha);
   put(cvs.roi.df, imgDF);
 }
 
-/** ============ Loading pipeline ============ */
 async function loadCase(caseId){
   currentCase = caseId;
   debug.textContent = "Loading volumes...";
@@ -592,7 +561,6 @@ async function loadCase(caseId){
   const gtUrl  = `/data/${caseId}/gt.nii.gz`;
   const prUrl  = `/data/${caseId}/pred.nii.gz`;
 
-  // parallel
   const [mri, gt, pr] = await Promise.all([
     fetchNifti(mriUrl),
     fetchNifti(gtUrl),
@@ -603,7 +571,6 @@ async function loadCase(caseId){
   volGT  = gt;
   volPR  = pr;
 
-  // load metrics
   const metrics = await loadMetrics(caseId);
   renderMetrics(metrics);
 
@@ -628,13 +595,11 @@ async function reloadCaseList(){
   }
 }
 
-/** ============ Events ============ */
 btnReload.addEventListener("click", ()=>reloadCaseList().catch(e=>debug.textContent=String(e)));
 caseSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
 modSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
 [sliceRange, alphaRange, roiMode, roiSize].forEach(el=>el.addEventListener("input", renderAll));
 
-/** Auto start */
 reloadCaseList().catch(e=>debug.textContent=String(e));
 </script>
 </body>

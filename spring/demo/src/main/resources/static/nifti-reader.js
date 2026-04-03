@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // node_modules/fflate/esm/browser.js
+
   var u8 = Uint8Array;
   var u16 = Uint16Array;
   var u32 = Uint32Array;
@@ -34,10 +34,10 @@
     5,
     5,
     0,
-    /* unused */
+
     0,
     0,
-    /* impossible */
+
     0
   ]);
   var fdeb = new u8([
@@ -71,7 +71,7 @@
     12,
     13,
     13,
-    /* unused */
+
     0,
     0
   ]);
@@ -158,8 +158,8 @@
   for (i = 0; i < 32; ++i)
     fdt[i] = 5;
   var i;
-  var flrm = /* @__PURE__ */ hMap(flt, 9, 1);
-  var fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
+  var flrm =  hMap(flt, 9, 1);
+  var fdrm =  hMap(fdt, 5, 1);
   var max = function(a) {
     var m = a[0];
     for (var i = 1; i < a.length; ++i) {
@@ -203,7 +203,7 @@
     "filename too long",
     "stream finishing",
     "invalid zip data"
-    // determined by unknown compression method
+
   ];
   var err = function(ind, msg, nt) {
     var e = new Error(msg || ec[ind]);
@@ -354,7 +354,7 @@
     } while (!final);
     return bt == buf.length ? buf : slc(buf, 0, bt);
   };
-  var et = /* @__PURE__ */ new u8(0);
+  var et =  new u8(0);
   var gzs = function(d) {
     if (d[0] != 31 || d[1] != 139 || d[2] != 8)
       err(6, "invalid gzip data");
@@ -388,7 +388,7 @@
   function decompressSync(data, out) {
     return data[0] == 31 && data[1] == 139 && data[2] == 8 ? gunzipSync(data, out) : (data[0] & 15) != 8 || data[0] >> 4 > 7 || (data[0] << 8 | data[1]) % 31 ? inflateSync(data, out) : unzlibSync(data, out);
   }
-  var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
+  var td = typeof TextDecoder != "undefined" &&  new TextDecoder();
   var tds = 0;
   try {
     td.decode(et, { stream: true });
@@ -396,7 +396,6 @@
   } catch (e) {
   }
 
-  // dist/src/nifti-extension.js
   var NIFTIEXTENSION = class {
     esize;
     ecode;
@@ -411,10 +410,7 @@
       this.edata = edata;
       this.littleEndian = littleEndian;
     }
-    /**
-     * Returns extension as ArrayBuffer.
-     * @returns {ArrayBuffer}
-     */
+
     toArrayBuffer() {
       let byteArray = new Uint8Array(this.esize);
       let data = new Uint8Array(this.edata);
@@ -426,13 +422,12 @@
     }
   };
 
-  // dist/src/utilities.js
   var Utils = class _Utils {
-    /*** Static Pseudo-constants ***/
+
     static crcTable = null;
     static GUNZIP_MAGIC_COOKIE1 = 31;
     static GUNZIP_MAGIC_COOKIE2 = 139;
-    /*** Static methods ***/
+
     static getStringAt(data, start, end) {
       var str = "", ctr, ch;
       for (ctr = start; ctr < end; ctr += 1) {
@@ -525,7 +520,7 @@
       }
       return parseFloat(val);
     }
-    // http://stackoverflow.com/questions/18638900/javascript-crc32
+
     static makeCRCTable() {
       let c;
       let crcTable = [];
@@ -551,7 +546,6 @@
     }
   };
 
-  // dist/src/nifti1.js
   var NIFTI1 = class _NIFTI1 {
     littleEndian = false;
     dim_info = 0;
@@ -600,8 +594,7 @@
     extensionSize = 0;
     extensionCode = 0;
     extensions = [];
-    /*** Static Pseudo-constants ***/
-    // datatype codes
+
     static TYPE_NONE = 0;
     static TYPE_BINARY = 1;
     static TYPE_UINT8 = 2;
@@ -619,13 +612,13 @@
     static TYPE_FLOAT128 = 1536;
     static TYPE_COMPLEX128 = 1792;
     static TYPE_COMPLEX256 = 2048;
-    // transform codes
+
     static XFORM_UNKNOWN = 0;
     static XFORM_SCANNER_ANAT = 1;
     static XFORM_ALIGNED_ANAT = 2;
     static XFORM_TALAIRACH = 3;
     static XFORM_MNI_152 = 4;
-    // unit codes
+
     static SPATIAL_UNITS_MASK = 7;
     static TEMPORAL_UNITS_MASK = 56;
     static UNITS_UNKNOWN = 0;
@@ -638,20 +631,16 @@
     static UNITS_HZ = 32;
     static UNITS_PPM = 40;
     static UNITS_RADS = 48;
-    // nifti1 codes
+
     static MAGIC_COOKIE = 348;
     static STANDARD_HEADER_SIZE = 348;
     static MAGIC_NUMBER_LOCATION = 344;
     static MAGIC_NUMBER = [110, 43, 49];
-    // n+1 (.nii)
+
     static MAGIC_NUMBER2 = [110, 105, 49];
-    // ni1 (.hdr/.img)
+
     static EXTENSION_HEADER_SIZE = 8;
-    /*** Prototype Methods ***/
-    /**
-     * Reads the header data.
-     * @param {ArrayBuffer} data
-     */
+
     readHeader(data) {
       var rawData = new DataView(data), magicCookieVal = Utils.getIntAt(rawData, 0, this.littleEndian), ctr, ctrOut, ctrIn, index;
       if (magicCookieVal !== _NIFTI1.MAGIC_COOKIE) {
@@ -769,10 +758,7 @@
         }
       }
     }
-    /**
-     * Returns a formatted string of header fields.
-     * @returns {string}
-     */
+
     toFormattedString() {
       var fmt = Utils.formatNumber, string = "";
       string += "Dim Info = " + this.dim_info + "\n";
@@ -806,11 +792,7 @@
       }
       return string;
     }
-    /**
-     * Returns a human-readable string of datatype.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getDatatypeCodeString = function(code) {
       if (code === _NIFTI1.TYPE_UINT8) {
         return "1-Byte Unsigned Integer";
@@ -838,11 +820,7 @@
         return "Unknown";
       }
     };
-    /**
-     * Returns a human-readable string of transform type.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getTransformCodeString = function(code) {
       if (code === _NIFTI1.XFORM_SCANNER_ANAT) {
         return "Scanner";
@@ -856,11 +834,7 @@
         return "Unknown";
       }
     };
-    /**
-     * Returns a human-readable string of spatial and temporal units.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getUnitsCodeString = function(code) {
       if (code === _NIFTI1.UNITS_METER) {
         return "Meters";
@@ -884,27 +858,11 @@
         return "Unknown";
       }
     };
-    /**
-     * Returns the qform matrix.
-     * @returns {Array.<Array.<number>>}
-     */
+
     getQformMat() {
       return this.convertNiftiQFormToNiftiSForm(this.quatern_b, this.quatern_c, this.quatern_d, this.qoffset_x, this.qoffset_y, this.qoffset_z, this.pixDims[1], this.pixDims[2], this.pixDims[3], this.pixDims[0]);
     }
-    /**
-     * Converts qform to an affine.  (See http://nifti.nimh.nih.gov/pub/dist/src/niftilib/nifti1_io.c)
-     * @param {number} qb
-     * @param {number} qc
-     * @param {number} qd
-     * @param {number} qx
-     * @param {number} qy
-     * @param {number} qz
-     * @param {number} dx
-     * @param {number} dy
-     * @param {number} dz
-     * @param {number} qfac
-     * @returns {Array.<Array.<number>>}
-     */
+
     convertNiftiQFormToNiftiSForm(qb, qc, qd, qx, qy, qz, dx, dy, dz, qfac) {
       var R = [
         [0, 0, 0, 0],
@@ -944,11 +902,7 @@
       R[2][3] = qz;
       return R;
     }
-    /**
-     * Converts sform to an orientation string (e.g., XYZ+--).  (See http://nifti.nimh.nih.gov/pub/dist/src/niftilib/nifti1_io.c)
-     * @param {Array.<Array.<number>>} R
-     * @returns {string}
-     */
+
     convertNiftiSFormToNEMA(R) {
       var xi, xj, xk, yi, yj, yk, zi, zj, zk, val, detQ, detP, i, j, k, p, q, r, ibest, jbest, kbest, pbest, qbest, rbest, M, vbest, Q, P, iChar, jChar, kChar, iSense, jSense, kSense;
       k = 0;
@@ -1192,34 +1146,19 @@
       r33 = R[2][2];
       return r11 * r22 * r33 - r11 * r32 * r23 - r21 * r12 * r33 + r21 * r32 * r13 + r31 * r12 * r23 - r31 * r22 * r13;
     };
-    /**
-     * Returns the byte index of the extension.
-     * @returns {number}
-     */
+
     getExtensionLocation() {
       return _NIFTI1.MAGIC_COOKIE + 4;
     }
-    /**
-     * Returns the extension size.
-     * @param {DataView} data
-     * @returns {number}
-     */
+
     getExtensionSize(data) {
       return Utils.getIntAt(data, this.getExtensionLocation(), this.littleEndian);
     }
-    /**
-     * Returns the extension code.
-     * @param {DataView} data
-     * @returns {number}
-     */
+
     getExtensionCode(data) {
       return Utils.getIntAt(data, this.getExtensionLocation() + 4, this.littleEndian);
     }
-    /**
-     * Adds an extension
-     * @param {NIFTIEXTENSION} extension
-     * @param {number} index
-     */
+
     addExtension(extension, index = -1) {
       if (index == -1) {
         this.extensions.push(extension);
@@ -1228,10 +1167,7 @@
       }
       this.vox_offset += extension.esize;
     }
-    /**
-     * Removes an extension
-     * @param {number} index
-     */
+
     removeExtension(index) {
       let extension = this.extensions[index];
       if (extension) {
@@ -1239,11 +1175,7 @@
       }
       this.extensions.splice(index, 1);
     }
-    /**
-     * Returns header as ArrayBuffer.
-     * @param {boolean} includeExtensions - should extension bytes be included
-     * @returns {ArrayBuffer}
-     */
+
     toArrayBuffer(includeExtensions = false) {
       const SHORT_SIZE = 2;
       const FLOAT32_SIZE = 4;
@@ -1312,7 +1244,6 @@
     }
   };
 
-  // dist/src/nifti2.js
   var NIFTI2 = class _NIFTI2 {
     littleEndian = false;
     dim_info = 0;
@@ -1357,7 +1288,7 @@
     extensions = [];
     extensionSize = 0;
     extensionCode = 0;
-    /*** Static Pseudo-constants ***/
+
     static MAGIC_COOKIE = 540;
     static MAGIC_NUMBER_LOCATION = 4;
     static MAGIC_NUMBER = [
@@ -1370,7 +1301,7 @@
       26,
       10
     ];
-    // n+2\0
+
     static MAGIC_NUMBER2 = [
       110,
       105,
@@ -1381,12 +1312,7 @@
       26,
       10
     ];
-    // ni2\0
-    /*** Prototype Methods ***/
-    /**
-     * Reads the header data.
-     * @param {ArrayBuffer} data
-     */
+
     readHeader(data) {
       var rawData = new DataView(data), magicCookieVal = Utils.getIntAt(rawData, 0, this.littleEndian), ctr, ctrOut, ctrIn, index, array;
       if (magicCookieVal !== _NIFTI2.MAGIC_COOKIE) {
@@ -1456,10 +1382,7 @@
         }
       }
     }
-    /**
-     * Returns a formatted string of header fields.
-     * @returns {string}
-     */
+
     toFormattedString() {
       var fmt = Utils.formatNumber, string = "";
       string += "Datatype = " + +this.datatypeCode + " (" + this.getDatatypeCodeString(this.datatypeCode) + ")\n";
@@ -1490,87 +1413,33 @@
       string += "Dim Info = " + this.dim_info + "\n";
       return string;
     }
-    /**
-     * Returns the byte index of the extension.
-     * @returns {number}
-     */
+
     getExtensionLocation = function() {
       return _NIFTI2.MAGIC_COOKIE + 4;
     };
-    /**
-     * Returns the extension size.
-     * @param {DataView} data
-     * @returns {number}
-     */
+
     getExtensionSize = NIFTI1.prototype.getExtensionSize;
-    /**
-     * Returns the extension code.
-     * @param {DataView} data
-     * @returns {number}
-     */
+
     getExtensionCode = NIFTI1.prototype.getExtensionCode;
-    /**
-     * Adds an extension
-     * @param {NIFTIEXTENSION} extension
-     * @param {number} index
-     */
+
     addExtension = NIFTI1.prototype.addExtension;
-    /**
-     * Removes an extension
-     * @param {number} index
-     */
+
     removeExtension = NIFTI1.prototype.removeExtension;
-    /**
-     * Returns a human-readable string of datatype.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getDatatypeCodeString = NIFTI1.prototype.getDatatypeCodeString;
-    /**
-     * Returns a human-readable string of transform type.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getTransformCodeString = NIFTI1.prototype.getTransformCodeString;
-    /**
-     * Returns a human-readable string of spatial and temporal units.
-     * @param {number} code
-     * @returns {string}
-     */
+
     getUnitsCodeString = NIFTI1.prototype.getUnitsCodeString;
-    /**
-     * Returns the qform matrix.
-     * @returns {Array.<Array.<number>>}
-     */
+
     getQformMat = NIFTI1.prototype.getQformMat;
-    /**
-     * Converts qform to an affine.  (See http://nifti.nimh.nih.gov/pub/dist/src/niftilib/nifti1_io.c)
-     * @param {number} qb
-     * @param {number} qc
-     * @param {number} qd
-     * @param {number} qx
-     * @param {number} qy
-     * @param {number} qz
-     * @param {number} dx
-     * @param {number} dy
-     * @param {number} dz
-     * @param {number} qfac
-     * @returns {Array.<Array.<number>>}
-     */
+
     convertNiftiQFormToNiftiSForm = NIFTI1.prototype.convertNiftiQFormToNiftiSForm;
-    /**
-     * Converts sform to an orientation string (e.g., XYZ+--).  (See http://nimh.nih.gov/pub/dist/src/niftilib/nifti1_io.c)
-     * @param {Array.<Array.<number>>} R
-     * @returns {string}
-     */
+
     convertNiftiSFormToNEMA = NIFTI1.prototype.convertNiftiSFormToNEMA;
     nifti_mat33_mul = NIFTI1.prototype.nifti_mat33_mul;
     nifti_mat33_determ = NIFTI1.prototype.nifti_mat33_determ;
-    /**
-     * Returns header as ArrayBuffer.
-     * @param {boolean} includeExtensions - should extension bytes be included
-     * @returns {ArrayBuffer}
-     */
+
     toArrayBuffer(includeExtensions = false) {
       const INT64_SIZE = 8;
       const DOUBLE_SIZE = 8;
@@ -1639,7 +1508,6 @@
     }
   };
 
-  // dist/src/nifti.js
   function isNIFTI1(data, isHdrImgPairOK = false) {
     var buf, mag1, mag2, mag3;
     if (data.byteLength < NIFTI1.STANDARD_HEADER_SIZE) {
@@ -1750,14 +1618,10 @@
 
 })();
 
-
-// ---- PATCH: expose nifti-reader API to window.nifti ----
 try {
-  // 这些符号在 bundle 闭包内不可见，所以我们用“反向方式”：
-  // 如果你的文件是 release/UMD 版，这里会自动已有 window.nifti，则不会覆盖。
+
   if (!window.nifti) {
-    // 兼容一些构建产物：很多会把 API 放到 window.nifti 或 globalThis.nifti
-    // 你现在这个文件没有挂载，我们直接提示你换正确 release。
+
     console.warn("This nifti-reader.js build does not expose window.nifti. Please replace with official UMD release build.");
   }
 } catch (e) {}

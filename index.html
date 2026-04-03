@@ -16,8 +16,8 @@
       --border:rgba(255,255,255,0.12);
       --accent:#67e8f9;
 
-      --fp:#ef4444; /* red */
-      --fn:#3b82f6; /* blue */
+      --fp:#ef4444;
+      --fn:#3b82f6;
       --shadow:0 10px 30px rgba(0,0,0,0.35);
     }
 
@@ -163,7 +163,7 @@
 </header>
 
 <main>
-  <!-- Toolbar -->
+
   <section class="card">
       <div class="toolbar">
         <div>
@@ -243,7 +243,6 @@
     </div>
   </section>
 
-  <!-- Metrics -->
   <section class="card">
       <div class="hd">
         <h2>Metrics</h2>
@@ -267,7 +266,6 @@
       </div>
   </section>
 
-  <!-- Views -->
   <section class="card">
     <div class="hd">
         <h2>Views</h2>
@@ -299,8 +297,7 @@
         </div>
       </div>
   </section>
-  
-  <!-- ROI -->
+
   <section class="card">
        <div class="hd">
           <h2>ROI Zoom (based on Axial slice)</h2>
@@ -326,21 +323,17 @@
   </section>
 </main>
 
-<!-- IMPORTANT: use local nifti-reader.js (UMD that provides window.nifti) -->
 <script src="/nifti-reader.js"></script>
 
-
 <script>
-/** ========= Safety ========= */
+
 if (!window.nifti) {
   throw new Error("nifti-reader.js loaded, but window.nifti is missing. Use the UMD build exposing global nifti.");
 }
 const nifti = window.nifti;
 
-/** ========= Latest paths (per your newest script) ========= */
-const BASE = "/viewer/cases"; // index.json + cases live here
+const BASE = "/viewer/cases";
 
-/** ========= DOM ========= */
 const btnReload = document.getElementById("btnReload");
 const openFolderBtn = document.getElementById("openFolderBtn");
 const caseSelect = document.getElementById("caseSelect");
@@ -368,7 +361,6 @@ const coInfo = document.getElementById("coInfo");
 const saInfo = document.getElementById("saInfo");
 const caseCount = document.getElementById("caseCount");
 
-/** canvases */
 const C = (id)=>document.getElementById(id);
 const cvs = {
   ax:{raw:C("axRaw"), gt:C("axGT"), pr:C("axPR"), df:C("axDF")},
@@ -377,24 +369,20 @@ const cvs = {
   roi:{gt:C("roiGT"), pr:C("roiPR"), df:C("roiDF")}
 };
 
-/** ========= State ========= */
 let volMRI=null, volGT=null, volPR=null;
 let currentCase=null;
 let allCases=[];
 
-/** BraTS palette (overlay for labels 1/2/4) */
 const labelColor = {
   0: [0,0,0,0],
-  1: [255, 99, 132, 200],  // NCR/NET
-  2: [94, 234, 212, 200],  // ED
-  4: [99, 102, 241, 200]   // ET
+  1: [255, 99, 132, 200],
+  2: [94, 234, 212, 200],
+  4: [99, 102, 241, 200]
 };
 
-/** Diff colors (FP/FN) */
 const FP = [239, 68, 68, 220];
 const FN = [59, 130, 246, 220];
 
-/** ========= Helpers ========= */
 async function fetchNifti(url) {
   const resp = await fetch(url, { cache: "no-store" });
   if (!resp.ok) throw new Error(`Fetch failed: ${url} (${resp.status})`);
@@ -406,7 +394,7 @@ async function fetchNifti(url) {
   const header = nifti.readHeader(raw);
   const imgBuf = nifti.readImage(header, raw);
 
-  const dims = [header.dims[1], header.dims[2], header.dims[3]]; // X,Y,Z
+  const dims = [header.dims[1], header.dims[2], header.dims[3]];
   const code = header.datatypeCode;
 
   let typed;
@@ -432,21 +420,21 @@ function getSlice(vol, axis, idx){
   const {data, dims:[X,Y,Z]} = vol;
   let w,h, out;
 
-  if (axis === "axial") { // z fixed
+  if (axis === "axial") {
     w=X; h=Y;
     out = new Float32Array(w*h);
     let p=0;
     for (let y=0;y<Y;y++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,y,idx,X,Y)];
     return {w,h,arr:out};
   }
-  if (axis === "coronal") { // y fixed
+  if (axis === "coronal") {
     w=X; h=Z;
     out = new Float32Array(w*h);
     let p=0;
     for (let z=0;z<Z;z++) for (let x=0;x<X;x++) out[p++] = data[idx3(x,idx,z,X,Y)];
     return {w,h,arr:out};
   }
-  // sagittal x fixed
+
   w=Y; h=Z;
   out = new Float32Array(w*h);
   let p=0;
@@ -454,9 +442,6 @@ function getSlice(vol, axis, idx){
   return {w,h,arr:out};
 }
 
-/** ---- Fixed rendering config (no UI brightness controls) ----
- * Use percentile clip + mild gamma to avoid "too dark", but user can't tweak it.
- */
 function percentile(arr, p){
   const n = arr.length;
   const step = Math.max(1, Math.floor(n / 50000));
@@ -468,9 +453,9 @@ function percentile(arr, p){
 }
 
 function normalizeToUint8(sliceF32){
-  const clip = 1;           // fixed 1% clip
-  const gamma = 0.95;       // fixed mild gamma
-  const invert = false;     // fixed off
+  const clip = 1;
+  const gamma = 0.95;
+  const invert = false;
 
   const lo = percentile(sliceF32, clip);
   const hi = percentile(sliceF32, 100-clip);
@@ -478,7 +463,7 @@ function normalizeToUint8(sliceF32){
 
   const out = new Uint8ClampedArray(sliceF32.length);
   for (let i=0;i<sliceF32.length;i++){
-    let x = (sliceF32[i]-lo)*inv; // 0..1
+    let x = (sliceF32[i]-lo)*inv;
     if (x<0) x=0; if (x>1) x=1;
     x = Math.pow(x, gamma);
     let g = Math.round(x*255);
@@ -513,7 +498,6 @@ function toLabelU8(floatArr){
   return out;
 }
 
-/** PR label fix: 0/1/2/3 -> treat 3 as 4 */
 function fixPredLabel(v){
   return (v === 3) ? 4 : v;
 }
@@ -556,14 +540,13 @@ function put(canvas, img){
   ctx.putImageData(img,0,0);
 }
 
-/** ROI helpers */
 function computeBBox2D(maskA, maskB, w, h){
   let x0=w, y0=h, x1=0, y1=0;
   let found=false;
   for (let y=0;y<h;y++){
     for (let x=0;x<w;x++){
       const i = x + y*w;
-      // bbox uses union (GT ∪ Pred)
+
       const v = (maskA[i]>0) || (maskB && (fixPredLabel(maskB[i])>0));
       if (v){
         found=true;
@@ -659,7 +642,6 @@ function renderROI(mriSlice, gtU8, prU8){
   put(cvs.roi.df, imgDF);
 }
 
-/** ========= Metrics ========= */
 async function loadMetrics(caseId){
   const url = `${BASE}/${caseId}/metrics.json`;
   const resp = await fetch(url, { cache:"no-store" });
@@ -679,11 +661,8 @@ function renderMetrics(m){
     return;
   }
 
-  // ---- 1) 兼容两种 schema：nested regions 或 flat keys ----
-  // nested: m.regions.WT.dice
   const nested = m.regions && typeof m.regions === "object" ? m.regions : null;
 
-  // flat: WT_dice / WT_iou / WT_precision ...
   function flatRegion(r){
     const obj = {};
     const keys = ["dice","iou","precision","recall","tp","fp","fn"];
@@ -694,7 +673,6 @@ function renderMetrics(m){
     return Object.keys(obj).length ? obj : null;
   }
 
-  // 统一成 regions = {WT:{...}, TC:{...}, ET:{...}}（如果能构造出来）
   const regions = {};
   for (const r of ["WT","TC","ET"]){
     if (nested && nested[r]) regions[r] = nested[r];
@@ -706,7 +684,6 @@ function renderMetrics(m){
 
   metricHint.textContent = `${m.case ?? currentCase} · Regions: WT/TC/ET`;
 
-  // ---- 2) KPI：WT/TC/ET Dice（如果存在）----
   for (const r of ["WT","TC","ET"]){
     const rr = regions[r] || {};
     const box = document.createElement("div");
@@ -719,7 +696,6 @@ function renderMetrics(m){
     kpi.appendChild(box);
   }
 
-  // ---- 3) 表格：WT/TC/ET（如果存在）----
   let hasAnyRegion = false;
   for (const r of ["WT","TC","ET"]){
     if (regions[r]) hasAnyRegion = true;
@@ -744,10 +720,8 @@ function renderMetrics(m){
     return;
   }
 
-
   const numericEntries = Object.entries(m).filter(([k,v]) => typeof v === "number" && Number.isFinite(v));
 
-  // KPI：挑几个最常见的
   const preferKeys = ["mean_dice","mean_iou","WT_dice","TC_dice","ET_dice","WT_iou","TC_iou","ET_iou"];
   const used = new Set();
 
@@ -773,8 +747,6 @@ function renderMetrics(m){
   }
 }
 
-
-/** ========= Render ========= */
 function renderAll(){
   if (!volMRI || !volGT || !volPR) return;
 
@@ -789,7 +761,6 @@ function renderAll(){
   const yMid = Math.floor(Y/2);
   const xMid = Math.floor(X/2);
 
-  // Axial
   {
     const mri = getSlice(volMRI, "axial", z);
     const gt  = getSlice(volGT,  "axial", z);
@@ -818,7 +789,6 @@ function renderAll(){
     renderROI(mri, gtU8, prU8);
   }
 
-  // Coronal
   {
     const mri = getSlice(volMRI, "coronal", yMid);
     const gt  = getSlice(volGT,  "coronal", yMid);
@@ -845,7 +815,6 @@ function renderAll(){
     put(cvs.co.df, imgDF);
   }
 
-  // Sagittal
   {
     const mri = getSlice(volMRI, "sagittal", xMid);
     const gt  = getSlice(volGT,  "sagittal", xMid);
@@ -876,7 +845,6 @@ function renderAll(){
   debug2.textContent = `Note: fixed render config (clip=1%, gamma=0.95, invert=off). No brightness UI controls.`;
 }
 
-/** ========= Loading pipeline ========= */
 async function loadCase(caseId){
   currentCase = caseId;
   const caseDir = `${BASE}/${caseId}/`;
@@ -902,7 +870,6 @@ async function loadCase(caseId){
   const metrics = await loadMetrics(caseId);
   renderMetrics(metrics);
 
-  // Reset slice range if out of bounds
   sliceRange.max = volMRI.dims[2]-1;
   if (Number(sliceRange.value) > Number(sliceRange.max)) sliceRange.value = 0;
 
@@ -931,7 +898,6 @@ async function reloadCaseList(){
   }
 }
 
-/** ========= Search filter ========= */
 function applySearchFilter(){
   const q = caseSearch.value.trim().toLowerCase();
   const filtered = q ? allCases.filter(x => x.toLowerCase().includes(q)) : allCases;
@@ -948,7 +914,6 @@ function applySearchFilter(){
   else if (filtered.length) caseSelect.value = filtered[0];
 }
 
-/** ========= Events ========= */
 btnReload.addEventListener("click", ()=>reloadCaseList().catch(e=>debug.textContent=String(e)));
 caseSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
 modSelect.addEventListener("change", ()=>loadCase(caseSelect.value).catch(e=>debug.textContent=String(e)));
@@ -966,7 +931,6 @@ openFolderBtn.addEventListener("click", ()=>{
   window.open(`${BASE}/${c}/`, "_blank");
 });
 
-/** Auto start */
 reloadCaseList().catch(e=>debug.textContent=String(e));
 </script>
 </body>

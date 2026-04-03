@@ -18,14 +18,12 @@ import urllib.request
 import torch
 from monai.networks.nets import SegResNet
 
-
 def ensure_weights(path: str, url: str):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return
     print(f"Downloading weights → {path}")
     urllib.request.urlretrieve(url, path)
-
 
 def main():
     parser = argparse.ArgumentParser(description="Export MONAI SegResNet to ONNX")
@@ -39,7 +37,6 @@ def main():
     if args.model_url:
         ensure_weights(args.model_path, args.model_url)
 
-    # Build model identical to open_brats_infer.py
     net = SegResNet(
         blocks_down=[1, 2, 2, 4],
         blocks_up=[1, 1, 1],
@@ -70,11 +67,10 @@ def main():
             "input":  {0: "batch", 2: "H", 3: "W", 4: "D"},
             "logits": {0: "batch", 2: "H", 3: "W", 4: "D"},
         },
-        dynamo=False,   # force legacy TorchScript export (compatible with plain onnxruntime)
+        dynamo=False,
     )
     size_mb = os.path.getsize(args.output) / (1024 * 1024)
     print(f"Exported → {args.output}  ({size_mb:.1f} MB, opset {args.opset})")
-
 
 if __name__ == "__main__":
     main()

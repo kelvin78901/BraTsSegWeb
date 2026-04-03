@@ -1,12 +1,12 @@
 package com.demo.med.auth;
 
 public class DemoUser {
-  public enum Role { DOCTOR }
+  public enum Role { DOCTOR, RESEARCHER, ADMIN }
 
   private final String userId;
   private final String displayName;
   private final Role role;
-  private final String caseRoot;   // data-path for this doctor's case set
+  private final String caseRoot;
   private final String institution;
 
   public DemoUser(String userId, String displayName, Role role, String caseRoot, String institution) {

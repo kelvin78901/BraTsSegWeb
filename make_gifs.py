@@ -1,52 +1,41 @@
-
 import os
 import json
 from pathlib import Path
 
 import numpy as np
 
-# pip install nibabel imageio pillow
 import nibabel as nib
 import imageio.v2 as imageio
 from PIL import Image, ImageDraw, ImageFont
 from gif_utils import merge_two_gif
 
-
-
-# =========================
-# Config
-# =========================
 THIS_DIR = Path(__file__).resolve().parent
 VIEWER_DIR = THIS_DIR / "viewer"
 CASES_DIR = VIEWER_DIR / "cases"
 INDEX_JSON = CASES_DIR / "index.json"
 
-DEFAULT_MODALITY = "flair"    # flair/t1/t1ce/t2
-DEFAULT_VIEW = "axial"        # axial/coronal/sagittal
+DEFAULT_MODALITY = "flair"
+DEFAULT_VIEW = "axial"
 FPS = 12
-MAX_FRAMES = 90               # 最多导出多少帧（避免 gif 太大）
-PAD_SLICES = 8                # mask 范围上下额外扩展多少 slice
+MAX_FRAMES = 90
+PAD_SLICES = 8
 
-# BraTS labels: 0,1,2,4
 LABEL_COLORS = {
-    1: (255, 99, 132, 180),   # NCR/NET
-    2: (94, 234, 212, 170),   # ED
-    4: (99, 102, 241, 180),   # ET
+    1: (255, 99, 132, 180),
+    2: (94, 234, 212, 170),
+    4: (99, 102, 241, 180),
 }
 
-# If you don't have a font file, PIL will fall back to default.
-FONT_PATH = None  # e.g. r"C:\Windows\Fonts\arial.ttf"
-
+FONT_PATH = None
 
 def load_nii(path: Path) -> np.ndarray:
     """Load NIfTI as float32 numpy array (X,Y,Z) in nibabel default order."""
     img = nib.load(str(path))
     data = img.get_fdata(dtype=np.float32)
-    # ensure 3D
+
     if data.ndim != 3:
         raise ValueError(f"Expected 3D nifti, got shape={data.shape} from {path}")
     return data
-
 
 def percentile_normalize(x: np.ndarray, p1=1, p99=99) -> np.ndarray:
     lo = np.percentile(x, p1)
@@ -56,7 +45,6 @@ def percentile_normalize(x: np.ndarray, p1=1, p99=99) -> np.ndarray:
     y = (x - lo) / (hi - lo)
     y = np.clip(y, 0, 1)
     return y
-
 
 def slice_2d(vol: np.ndarray, view: str, idx: int) -> np.ndarray:
     """
@@ -75,11 +63,8 @@ def slice_2d(vol: np.ndarray, view: str, idx: int) -> np.ndarray:
     else:
         raise ValueError(f"Unknown view: {view}")
 
-    # Make it look like common radiology view: transpose + flip
-    # (This is not “world-coordinate correct”, just for consistent display)
-    sl = np.rot90(sl)  # rotate 90 deg
+    sl = np.rot90(sl)
     return sl
-
 
 def rgba_overlay(gray01: np.ndarray, seg: np.ndarray, alpha=0.45) -> Image.Image:
     """
@@ -94,19 +79,18 @@ def rgba_overlay(gray01: np.ndarray, seg: np.ndarray, alpha=0.45) -> Image.Image
 
     h = seg.shape[0]
     w = seg.shape[1]
-    # PIL uses (x,y)
+
     for y in range(h):
         for x in range(w):
             lab = int(seg[y, x])
             if lab in LABEL_COLORS:
                 r, g, b, a = LABEL_COLORS[lab]
-                # extra alpha factor
+
                 a2 = int(a * alpha)
                 pix[x, y] = (r, g, b, a2)
 
     out = Image.alpha_composite(base, overlay)
     return out
-
 
 def draw_caption(img: Image.Image, text: str) -> Image.Image:
     img = img.copy()
@@ -116,7 +100,6 @@ def draw_caption(img: Image.Image, text: str) -> Image.Image:
     else:
         font = ImageFont.load_default()
 
-    # background box
     pad = 6
     x0, y0 = 8, 8
     tw, th = draw.textbbox((0, 0), text, font=font)[2:]
@@ -124,7 +107,6 @@ def draw_caption(img: Image.Image, text: str) -> Image.Image:
     draw.rectangle(box, fill=(0, 0, 0, 160))
     draw.text((x0, y0), text, fill=(255, 255, 255, 230), font=font)
     return img
-
 
 def find_slice_range(seg3d: np.ndarray, view: str, pad=PAD_SLICES):
     """Find slice range where seg is nonzero. If none, return center range."""
@@ -150,21 +132,18 @@ def find_slice_range(seg3d: np.ndarray, view: str, pad=PAD_SLICES):
     hi = min(n_slices - 1, int(nz.max()) + pad)
     return lo, hi
 
-
 def linspace_indices(lo: int, hi: int, max_frames: int):
     n = hi - lo + 1
     if n <= max_frames:
         return list(range(lo, hi + 1))
-    # uniformly sample
-    return list(np.linspace(lo, hi, max_frames).round().astype(int))
 
+    return list(np.linspace(lo, hi, max_frames).round().astype(int))
 
 def make_overlay_gif(case_id: str, mri_path: Path, seg_path: Path, out_gif: Path,
                      view=DEFAULT_VIEW, modality=DEFAULT_MODALITY):
     mri3d = load_nii(mri_path)
     seg3d = load_nii(seg_path).astype(np.int16)
 
-    # normalize MRI once using robust percentiles (whole volume)
     mri01 = percentile_normalize(mri3d)
 
     lo, hi = find_slice_range(seg3d, view=view)
@@ -184,7 +163,6 @@ def make_overlay_gif(case_id: str, mri_path: Path, seg_path: Path, out_gif: Path
     imageio.mimsave(str(out_gif), frames, duration=1.0 / FPS)
     return lo, hi, len(frames)
 
-
 def main():
     if not INDEX_JSON.exists():
         raise FileNotFoundError(f"index.json not found: {INDEX_JSON}. Run build_cases.py first.")
@@ -202,7 +180,6 @@ def main():
         cid = it["case_id"]
         base = CASES_DIR / cid
 
-        # modality file
         mri_file = base / f"{DEFAULT_MODALITY}.nii.gz"
         if not mri_file.exists():
             print(f"[SKIP] {cid}: missing modality file {mri_file.name}")
@@ -211,7 +188,6 @@ def main():
         gt_file = base / "gt.nii.gz"
         pred_file = base / "pred.nii.gz"
 
-        # output gifs
         gt_gif = base / "gt.gif"
         pred_gif = base / "pred.gif"
         merged_gif = base / "merged.gif"
@@ -234,7 +210,6 @@ def main():
         else:
             print(f"[WARN] {cid}: pred.nii.gz not found, skip pred.gif")
 
-        # merge if both exist
         if gt_gif.exists() and pred_gif.exists():
             print(f"[MERGE] {cid} -> {merged_gif.name}")
             merge_two_gif(str(gt_gif), str(pred_gif), str(merged_gif))
@@ -242,7 +217,6 @@ def main():
             print(f"[INFO] {cid}: only one gif exists, skip merge")
 
     print("\nDone. GIFs are under: viewer/cases/<CASE_ID>/*.gif")
-
 
 if __name__ == "__main__":
     main()

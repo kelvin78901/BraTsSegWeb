@@ -1,234 +1,189 @@
-# BraTS Web Project Overview
+# SmartMed BraTS Web
 
+A brain-tumor MRI segmentation, visualization, and AI-assisted diagnosis platform built on the BraTS 2021 dataset.
 
-## 1. What this project is
+## Overview
 
-BraTS Web is an end-to-end brain tumor segmentation platform for MRI workflows.
+SmartMed BraTS Web lets clinicians load NIfTI MRI scans in the browser, run automatic tumor segmentation, and get AI-powered diagnostic assistance — all through a single-page web application.
 
-It combines:
-- A React + TypeScript web app for login, case review, async inference, and clinical AI assistance.
-- A Spring Boot API gateway for auth, RBAC, audit, model registry, and job orchestration.
-- A Python FastAPI sidecar for segmentation and keyframe rendering.
+**Key capabilities:**
 
-The platform supports:
-- Multi-case review (WT/TC/ET segmentation quality and overlays)
-- Async file-based inference jobs
-- AI-assisted case consultation via Gemini
-- Role-based access with request-level auditing
+- **In-browser MRI viewer** — three orthogonal slice views (axial, coronal, sagittal) plus real-time 3D volume rendering, with interactive controls for slice position, overlay opacity, and rotation.
+- **Automatic segmentation** — upload a `.nii.gz` file and the system runs nnU-Net, ONNX Runtime, or MONAI inference on the backend, returning segmentation results and evaluation metrics.
+- **AI consultation** — multi-turn conversational analysis and structured differential-diagnosis reports powered by Google Gemini, grounded in the actual imaging data and patient context.
+- **Multi-model comparison** — a dedicated doctor view showing raw MRI, ground truth, prediction, and a color-coded difference map side by side across three planes.
+- **Electronic health records** — in-app patient record management including medications, lab results, imaging studies, treatment plans, tumor details, and clinical history.
+- **Role-based access & audit logging** — Bearer-token authentication with RBAC and automatic request-level auditing.
 
-## 2. Current architecture
+---
 
-```text
-Browser (React SPA)
-  Routes: /login, /patient, /doctor, /records
-  |
-  |  /api/** (Bearer token)
-  v
-Spring Boot 3.3.2 (Java 17)
-  - Auth + token store + role interceptors
-  - Async inference job APIs
-  - Model registry APIs
-  - AI chat/consult/background APIs
-  - Audit APIs
-  - Static hosting for built frontend
-  |
-  |  HTTP + optional X-Sidecar-Key
-  v
-Python Sidecar (FastAPI)
-  - /segment
-  - /render/keyframes
-  - /health
-  - backend fallback: nnU-Net -> ONNX -> MONAI
+## Architecture
+
+The system follows a **three-tier** design:
+
+```
+┌──────────────────────────────────────┐
+│         Browser  (React SPA)         │
+│   Login · Patient · Doctor · Records │
+│         ↕  REST API (fetch)          │
+├──────────────────────────────────────┤
+│      Spring Boot 3.3  (Java 17)      │
+│   API Gateway · Auth · Inference     │
+│   Queue · AI Agent · Audit           │
+│         ↕  HTTP                      │
+├──────────────┬───────────────────────┤
+│  Python      │  Google Gemini API    │
+│  Sidecar     │  (generative AI)      |
+│  (FastAPI)   │                       │
+└──────────────┴───────────────────────┘
 ```
 
-## 3. Repository layout
+| Tier | Technology | Default Port | Role |
+|------|-----------|-------------|------|
+| Frontend | React 18 + TypeScript + Vite | 5173 (dev) | UI rendering, NIfTI visualization, state management |
+| Backend | Spring Boot 3.3.2, Java 17 | 8080 | API gateway, auth, job queue, AI proxy, audit |
+| Sidecar | Python FastAPI + Uvicorn | 8000 | GPU/CPU segmentation inference, keyframe rendering |
 
-```text
+---
+
+## Tech Stack
+
+### Frontend
+
+| Technology | Purpose |
+|-----------|---------|
+| React 18 + TypeScript 5.5 | Component-based UI with type safety |
+| Vite 5 | Dev server with hot reload; production bundler |
+| React Router 6 | Client-side routing (`/login`, `/patient`, `/doctor`, `/records`) |
+| Zustand | Lightweight state management (auth, viewer, inference, patient records) |
+| Three.js | 3D brain model on the login page (Perlin-noise geometry + custom GLSL shaders + bloom post-processing) |
+| Canvas 2D API | 2D slice rendering and CPU-based 3D volume ray-casting |
+| nifti-reader.js | In-browser NIfTI file parsing and decompression |
+| Vitest + Playwright | Unit tests and end-to-end tests |
+
+### Backend
+
+| Technology | Purpose |
+|-----------|---------|
+| Spring Boot 3.3.2 (starter-web only) | REST API framework — no Spring Security, no JPA, no database |
+| In-memory stores | All data (tokens, jobs, audit events, chat history) stored in ConcurrentHashMap with TTL-based eviction |
+| Java HttpClient | Calls Google Gemini API with retry and timeout |
+| ThreadPoolExecutor | Async inference job processing (configurable pool size) |
+
+### Sidecar
+
+| Technology | Purpose |
+|-----------|---------|
+| FastAPI + Uvicorn | Lightweight Python web service |
+| nibabel + NumPy + Pillow | NIfTI I/O, array processing, PNG keyframe generation |
+| nnU-Net v1/v2 | Primary segmentation backend (GPU) |
+| ONNX Runtime | CPU-only inference alternative |
+| MONAI + PyTorch | Fallback backend (auto-downloads model from HuggingFace) |
+
+---
+
+## Project Structure
+
+```
 brats_web/
-  frontend/                    React + Vite + TypeScript app
-  spring/demo/                 Spring Boot application
-  sidecar/                     FastAPI segmentation service
-  demo_site/                   Static demo pages and data
-  index.html, 1.html           Legacy static viewer pages
-  build_*.py, make_*.py        Dataset/build utilities
+├── frontend/            React SPA source
+│   └── src/
+│       ├── pages/       4 page components (Login, Patient, Doctor, Records)
+│       ├── components/  Reusable UI (ViewerPanel, ChatPanel, InferencePanel, etc.)
+│       ├── store/       Zustand stores (auth, viewer, inference, patient records)
+│       ├── api/         HTTP client wrappers with auto-retry
+│       └── lib/         NIfTI loader, 2D/3D renderers, Markdown parser
+│
+├── spring/demo/         Spring Boot backend
+│   └── src/main/java/com/demo/med/
+│       ├── auth/        Token auth, RBAC interceptor, role annotations
+│       ├── infer/       Async job queue, worker pool, model registry
+│       ├── agent/       Gemini chat, structured consult, background generation
+│       ├── audit/       Request-level audit logging (ring buffer)
+│       ├── patient/     Demo patient profile
+│       └── config/      Web config, exception handler, request ID, startup checks
+│
+├── sidecar/             Python segmentation service
+│   ├── app.py           FastAPI endpoints (/segment, /render/keyframes, /health)
+│   └── models/          Model weight files
+│
+└── demo_site/           Static demo data and legacy viewer pages
 ```
 
-## 4. Frontend (frontend/)
+---
 
-### 4.1 Stack
-- React 18
-- TypeScript 5.5
-- Vite 5
-- Zustand state management
-- Three.js for login 3D scene
-- Vitest + Testing Library + Playwright
+## How It Works
 
-### 4.2 Main routes
-Defined in `frontend/src/App.tsx`:
-- `/login`: login page with Three.js brain scene
-- `/patient`: primary clinician workspace
-- `/doctor`: multi-view case review page
-- `/records`: patient record management UI
+### MRI Viewing
 
-### 4.3 Important feature areas
-- `pages/PatientPage.tsx`
-  - case/model selection
-  - viewer + metrics + upload + async inference + AI chat
-- `pages/DoctorPage.tsx`
-  - axial/coronal/sagittal comparison and Dice KPI panel
-- `pages/PatientRecordPage.tsx`
-  - editable longitudinal patient record data
-- `components/InferencePanel.tsx`
-  - async submit + polling + recent jobs
+The frontend fetches NIfTI files (`.nii.gz`) from the server, parses them entirely in the browser, and renders three orthogonal 2D slice views plus a 3D volume view — all on HTML Canvas. The segmentation mask is overlaid with color-coded labels: red (necrotic core), green (edema), blue (enhancing tumor). Users can adjust slice position, overlay opacity, 3D threshold, and toggle auto-rotation.
 
-### 4.4 Frontend build output
-Vite build writes to:
-- `spring/demo/src/main/resources/static`
+### Segmentation Inference
 
-This allows Spring Boot to serve the SPA in production mode.
+Users drag-and-drop a NIfTI file into the inference panel. The frontend submits it to the Spring Boot backend, which queues the job and dispatches it to the Python sidecar via HTTP. The sidecar runs the segmentation model (priority: nnU-Net → ONNX → MONAI), saves the result as a new case on disk, and returns overlay keyframes. The frontend polls for completion and automatically loads the result into the viewer.
 
-## 5. Spring Boot backend (spring/demo/)
+### AI-Assisted Diagnosis
 
-### 5.1 Core modules
-- `auth/`
-  - login/logout/me
-  - token issuance and TTL-based in-memory token store
-  - API auth filter + role interceptor
-- `infer/`
-  - async job submission, status, result, history
-  - model registry and model metadata APIs
-- `agent/`
-  - conversational assistant endpoint
-  - structured consultation and background generation
-  - Gemini API integration with retries
-- `audit/`
-  - API action auditing and admin query endpoints
-- `patient/`
-  - patient profile endpoint
-- `config/`
-  - request ID, exception handling, static resource mapping, startup validations
+The platform integrates Google Gemini for two modes of AI interaction:
 
-### 5.2 API access model
-- `AuthFilter` requires Bearer token on `/api/**`
-- `RoleCheckInterceptor` enforces `@RequireRole`
-- `ResourcePolicy` protects job ownership (owner-or-admin)
+- **Free-form chat** — multi-turn conversation about the loaded case, with history maintained per user and case.
+- **Structured consult** — sends the case imaging data (keyframe PNGs), segmentation metrics, and patient context to Gemini with a JSON-schema constraint. Returns a structured report including key findings, differential diagnoses with confidence levels, recommended next steps, and red flags.
 
-### 5.3 SPA routing
-`WebConfig` forwards:
-- `/login`, `/patient`, `/doctor`, `/records` -> `/index.html`
+### Doctor Comparison View
 
-## 6. Python sidecar (sidecar/)
+A 12-panel grid displays raw MRI, ground truth overlay, model prediction overlay, and a difference map (false positives in red, false negatives in green, true positives in blue) across all three anatomical planes. Doctors can switch between MRI modalities (FLAIR, T1, T1ce, T2) and compare different models.
 
-### 6.1 Service endpoints
-- `GET /health`
-- `GET /render/keyframes?caseId=...&sliceZ=...`
-- `POST /segment` (multipart NIfTI)
+### Patient Records
 
-### 6.2 Segmentation behavior
-`/segment` accepts `.nii`/`.nii.gz`, runs backend by policy:
-- explicit `SEG_BACKEND` if provided
-- otherwise fallback chain:
-  1) nnU-Net
-  2) ONNX Runtime
-  3) MONAI/PyTorch open model
+A full electronic health record interface stored in the browser (localStorage). Supports editing demographics, tumor details, treatment plans, medications, lab results, imaging studies, allergies, comorbidities, visit history, and file uploads. This data is attached as context when requesting AI consultations.
 
-It persists uploaded cases under `CASES_DIR` and updates index metadata.
+---
 
-## 7. Key API summary
+## Authentication & Authorization
 
-### 7.1 Auth
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `POST /api/auth/upload-segment`
+- **Mechanism:** Custom Bearer-token auth (no Spring Security dependency). Tokens are UUIDs stored in-memory with 8-hour TTL.
+- **RBAC:** Three roles — `DOCTOR`, `RESEARCHER`, `ADMIN`. Enforced via a custom annotation and interceptor.
+- **Sidecar auth:** Shared-secret header between Spring Boot and the Python sidecar.
 
-### 7.2 AI
-- `POST /api/agent/chat`
-- `POST /api/ai/consult`
-- `POST /api/ai/background`
-- `GET /api/ai/models`
-- `GET /api/ai/selfcheck`
+---
 
-### 7.3 Async inference
-- `POST /api/infer/submit`
-- `GET /api/infer/status/{jobId}`
-- `GET /api/infer/result/{jobId}`
-- `GET /api/infer/jobs`
-- `GET /api/infer/admin/jobs` (admin)
+## Data Format
 
-### 7.4 Model registry
-- `GET /api/models`
-- `GET /api/models/{modelId}`
+### NIfTI Files
 
-### 7.5 Patient and audit
-- `GET /api/patient/me`
-- `GET /api/audit` (admin)
-- `GET /api/audit/user/{userId}` (admin)
+The platform works with NIfTI-1 format (`.nii` or `.nii.gz`). BraTS 2021 volumes are typically 240×240×155 voxels. Each case stores four MRI modalities (FLAIR, T1, T1ce, T2) and a segmentation mask as separate files.
 
-## 8. Data and static resources
+**Segmentation labels:**
 
-- Primary dynamic case route: `/viewer/cases/**`
-- Compatibility route: `/data/**`
-- Source priority for `/viewer/cases/**`:
-  1) filesystem path from `cases.dir` or `CASES_DIR`
-  2) classpath fallback `static/viewer/cases/`
+| Value | Region | Color |
+|-------|--------|-------|
+| 0 | Background | — |
+| 1 | Necrotic / Non-enhancing Core | Red |
+| 2 | Peritumoral Edema | Green |
+| 4 | Enhancing Tumor | Blue |
 
-Common case files:
-- `flair.nii.gz`
-- `pred.nii.gz`
-- `metrics.json`
+**Composite regions:** WT = 1+2+4, TC = 1+4, ET = 4
 
-## 9. Configuration and environment
+### Case Directory Layout
 
-### 9.1 Spring
-From `application.properties`:
-- `server.port` (default `8080`)
-- `cases.dir` (or env `CASES_DIR`)
-- `gemini.apiKey`, `gemini.model`, `gemini.baseUrl`
-- `sidecar.baseUrl`, `sidecar.secret`
-- `infer.pool.size`
-- multipart limits set to `512MB`
+```
+CASES_DIR/
+├── index.json          # Array of case ID strings
+├── BraTS2021_XXXXX/
+│   ├── flair.nii.gz    # MRI modalities
+│   ├── t1.nii.gz
+│   ├── t1ce.nii.gz
+│   ├── t2.nii.gz
+│   ├── gt.nii.gz       # Ground truth (optional)
+│   ├── pred.nii.gz     # Model prediction
+│   └── metrics.json    # Dice/IoU scores per region
+└── ...
+```
 
-### 9.2 Sidecar
-Important environment variables:
-- `CASES_DIR`
-- `SIDECAR_SECRET`
-- `SEG_BACKEND`
-- `ONNX_MODEL_PATH`
-- `OPEN_BRATS_MODEL_PATH`
-- `OPEN_BRATS_MODEL_URL`
-- nnU-Net variables (`NNUNET_*`)
-- `MAX_UPLOAD_BYTES`
+---
 
-## 10. Local development workflow
+## Notes
 
-### 10.1 Start sidecar
-In `sidecar/` environment:
-- install dependencies from `requirements.txt` or `requirements-cpu.txt`
-- run `uvicorn app:app --host 0.0.0.0 --port 8000`
-
-### 10.2 Start Spring Boot
-In `spring/demo/`:
-- `mvn spring-boot:run`
-
-### 10.3 Start frontend dev server
-In `frontend/`:
-- `npm install`
-- `npm run dev`
-
-Vite dev server runs on `5173` and proxies `/api`, `/viewer`, `/data`, and `/nifti-reader.js` to `8080`.
-
-## 11. Testing
-
-Frontend tests:
-- Unit/integration: `npm run test`
-- E2E: `npm run test:e2e`
-
-No consolidated backend test suite is currently documented in this file.
-
-## 12. Current state notes
-
-- The active product UI is the React SPA under `frontend/`.
-- Legacy static HTML assets still exist at repository root and in `demo_site/` for demo/compatibility use.
-- Auth/session and audit storage are in-memory (suitable for demo/internal environments; not yet persistent).
-- Async inference and model registry are implemented and integrated into the React patient workflow.
+- All backend storage is **in-memory** — data is lost on restart. This is suitable for demo and development environments.
+- Passwords are hard-coded for the demo accounts (`doctor`/`salynt`, `dr.chen`/`chen2025`, `dr.smith`/`smith2025`).
+- For detailed architecture, API specifications, and internal design, see [ARCHITECTURE.md](ARCHITECTURE.md).

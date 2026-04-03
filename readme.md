@@ -1,6 +1,5 @@
 # BraTS Web Project Overview
 
-Last updated: 2026-04-03
 
 ## 1. What this project is
 

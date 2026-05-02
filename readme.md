@@ -187,3 +187,8 @@ CASES_DIR/
 - All backend storage is **in-memory** — data is lost on restart. This is suitable for demo and development environments.
 - Passwords are hard-coded for the demo accounts (`doctor`/`salynt`, `dr.chen`/`chen2025`, `dr.smith`/`smith2025`).
 - For detailed architecture, API specifications, and internal design, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+
+## Reference 
+BraTs2021
+nnUnet
